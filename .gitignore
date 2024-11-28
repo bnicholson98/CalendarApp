@@ -1,0 +1,26 @@
+# Node.js dependencies
+node_modules/
+
+# Python virtual environment
+venv/
+
+# Byte-compiled Python files
+__pycache__/
+*.py[cod]
+
+# Django database files
+db.sqlite3
+
+# Environment variables
+*.env
+
+# VSCode settings (optional)
+.vscode/
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+tmp/
