@@ -1,6 +1,8 @@
 from django.urls import path
-from .views import calendar_events
+from . import views
 
 urlpatterns = [
-    path('events/', calendar_events),
+    path("register/", views.register_user, name="register"),
+    path("login/", views.login_user, name="login"),
+    path("logout/", views.logout_user, name="logout"),
 ]
