@@ -20,6 +20,7 @@ const Login = ({ onLogin }) => {
         // Store authentication token if backend uses it
         const data = await response.json();
         localStorage.setItem("token", data.token);
+        localStorage.setItem("userName", data.userName)
         onLogin(); // Notify parent about successful login
         navigate("/home");
       } else {

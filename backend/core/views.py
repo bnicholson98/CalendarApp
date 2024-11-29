@@ -33,7 +33,11 @@ def login_user(request):
     user = authenticate(username=username, password=password)
     if user:
         token, _ = Token.objects.get_or_create(user=user)
-        return JsonResponse({"token": token.key}, status=status.HTTP_200_OK)
+        return JsonResponse(
+            {
+                "token": token.key,
+                "userName": username
+            }, status=status.HTTP_200_OK)
     
     return JsonResponse({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
