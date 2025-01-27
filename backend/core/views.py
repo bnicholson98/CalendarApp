@@ -1,15 +1,16 @@
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from django.http import JsonResponse
-from rest_framework.decorators import api_view
+from django.utils import timezone
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.contrib.auth.hashers import make_password
-from rest_framework.permissions import IsAuthenticated
-
+from .models import Event
+from .serializers import EventSerializer
 
 @api_view(["POST"])
 def register_user(request):
@@ -50,3 +51,23 @@ def logout_user(request):
         return JsonResponse({"message": "Logged out successfully"}, status=status.HTTP_200_OK)
     
     return JsonResponse({"error": "Invalid token"}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_event(request):
+    event_name = request.data.get('event_name')
+    dates = request.data.get('dates')
+
+    if not event_name or not dates:
+        return Response({"error": "Event name and dates are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    event_instances = []
+    for date_str in dates:
+        date = timezone.datetime.strptime(date_str, '%Y-%m-%d').date()
+        event = Event(event_name=event_name, user=request.user, date=date)
+        print(event)
+        event_instances.append(event)
+
+    Event.objects.bulk_create(event_instances)
+    
+    return Response({"success": "Event created"}, status=status.HTTP_201_CREATED)

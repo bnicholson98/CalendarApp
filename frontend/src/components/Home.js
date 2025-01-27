@@ -33,10 +33,15 @@ const Home = ({ onLogout }) => {
         }
     };
 
+    const handleCreateEvent = () => {
+        navigate("/create-event");
+    };
+
     return (
         <div>
             <h1>Home</h1>
             {userName && <h2>Welcome, {userName}!</h2>}
+            <button style={{ backgroundColor: 'blue', color: 'white' }} onClick={handleCreateEvent}>Create Event</button>
             <button onClick={handleLogout}>Logout</button>
         </div>
     );
