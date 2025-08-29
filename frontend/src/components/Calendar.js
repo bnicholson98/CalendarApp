@@ -5,7 +5,7 @@ import "react-datepicker/dist/react-datepicker.css";
 
 const Calendar = () => {
     const [eventName, setEventName] = useState("");
-    const [selectedDates, setSelectedDates] = useState([null, null]); // Initialize properly for a range
+    const [selectedDates, setSelectedDates] = useState([]);
     const navigate = useNavigate();
 
     const handleSubmit = async () => {
@@ -13,8 +13,8 @@ const Calendar = () => {
             alert("Event name is required.");
             return;
         }
-        if (!selectedDates[0] || !selectedDates[1]) {
-            alert("Please select a valid date range.");
+        if (selectedDates.length === 0) {
+            alert("Please select at least one date.");
             return;
         }
 
@@ -55,10 +55,9 @@ const Calendar = () => {
                 placeholder="Event Name"
             />
             <DatePicker
-                onChange={(dates) => setSelectedDates(dates || [null, null])} // Ensure dates is valid
-                selectsRange
-                startDate={selectedDates[0]}
-                endDate={selectedDates[1]}
+                onChange={(dates) => setSelectedDates(dates || [])}
+                selectsMultiple
+                inline
             />
             <button onClick={handleSubmit}>Create Event</button>
         </div>
