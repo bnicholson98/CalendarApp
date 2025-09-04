@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import api from "../services/api";
 
 const Calendar = () => {
     const [eventName, setEventName] = useState("");
@@ -20,22 +21,19 @@ const Calendar = () => {
 
         try {
             const token = localStorage.getItem("token");
-            const response = await fetch("http://127.0.0.1:8000/api/events/create/", {
-                method: "POST",
+            const response = await api.post("/events/create/", {
+                event_name: eventName,
+                dates: selectedDates.map(date => date.toISOString().split('T')[0]),
+            }, {
                 headers: {
-                    "Content-Type": "application/json",
                     Authorization: `Token ${token}`,
                 },
-                body: JSON.stringify({
-                    event_name: eventName,
-                    dates: selectedDates.map(date => date.toISOString().split('T')[0]),
-                }),
             });
 
-            if (response.ok) {
+            if (response.status === 201) {
                 navigate("/");
             } else {
-                const errorData = await response.json();
+                const errorData = response.data;
                 console.error("Event creation failed:", errorData);
                 alert("Event creation failed. Please try again.");
             }

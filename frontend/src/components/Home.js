@@ -1,5 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import api from "../services/api";
 
 const Home = ({ onLogout }) => {
     const navigate = useNavigate();
@@ -10,20 +11,27 @@ const Home = ({ onLogout }) => {
         try {
             // Send request to backend logout endpoint
             const token = localStorage.getItem("token");
-            const response = await fetch("http://127.0.0.1:8000/api/auth/logout/", {
-                method: "POST",
+    
+            // If there’s no token, just clean up; no need to call the server.
+            if (!token) {
+                localStorage.removeItem("token");
+                onLogout?.();
+                navigate("/login");
+                return;
+            }
+
+            const response = await api.post("/auth/logout/", {}, {
                 headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Token ${token}`, // Include token in Authorization header
+                    Authorization: `Token ${token}`,
                 },
             });
-    
-            if (response.ok) {
-                localStorage.removeItem("token"); // Remove token from local storage
-                onLogout(); // Update frontend state
+
+            if (response.status === 204) {
+                localStorage.removeItem("token");
+                onLogout?.(); // Update frontend state
                 navigate("/login"); // Redirect to login page
             } else {
-                const errorData = await response.json();
+                const errorData = response.data;
                 console.error("Logout failed:", errorData);
                 alert("Logout failed. Please try again.");
             }

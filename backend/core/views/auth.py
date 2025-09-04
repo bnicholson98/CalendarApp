@@ -7,6 +7,9 @@ from rest_framework.response import Response
 from rest_framework import status
 from core.serializers import UserRegistrationSerializer, LoginSerializer
 from core.services.auth_service import AuthService
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.permissions import IsAuthenticated
 
 
 @api_view(["POST"])
@@ -102,6 +105,6 @@ def logout_user(request):
     success, response_data = AuthService.logout_user(request.auth)
     
     if success:
-        return JsonResponse(response_data, status=status.HTTP_200_OK)
+        return JsonResponse(response_data, status=status.HTTP_204_NO_CONTENT)
     else:
         return JsonResponse(response_data, status=status.HTTP_400_BAD_REQUEST)

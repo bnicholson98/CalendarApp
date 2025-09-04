@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import api from "../services/api";
 
-const Register = ({ onRegister }) => { 
+const Register = ({ onRegister }) => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
@@ -9,18 +10,24 @@ const Register = ({ onRegister }) => {
   const handleRegister = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/auth/register/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ username, password }),
+      const response = await api.post("/auth/register/", {
+        username,
+        password,
       });
-      if (response.ok) {
+      if (response.status === 201) {
         alert("User registered successfully!");
-        localStorage.setItem("token", "mockToken"); // Simulate token from API
-        onRegister(); // Update parent state
-        navigate("/home"); // Navigate to home page
+        const loginResponse = await api.post("/auth/login/", {
+          username,
+          password,
+        });
+        if (loginResponse.status === 200) {
+          localStorage.setItem("token", loginResponse.data.token);
+          localStorage.setItem("userName", loginResponse.data.userName);
+          onRegister(); // Update parent state
+          navigate("/home"); // Navigate to home page
+        } else {
+          alert("Login failed after registration.");
+        }
       } else {
         alert("Error during registration");
       }

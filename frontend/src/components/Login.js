@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import api from "../services/api";
 
 const Login = ({ onLogin }) => {
   const [username, setUsername] = useState("");
@@ -9,18 +10,15 @@ const Login = ({ onLogin }) => {
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/auth/login/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ username, password }),
+      const response = await api.post("/auth/login/", {
+        username,
+        password,
       });
-      if (response.ok) {
+      if (response.status === 200) {
         // Store authentication token if backend uses it
-        const data = await response.json();
+        const data = response.data;
         localStorage.setItem("token", data.token);
-        localStorage.setItem("userName", data.userName)
+        localStorage.setItem("userName", data.userName);
         onLogin(); // Notify parent about successful login
         navigate("/home");
       } else {
@@ -28,6 +26,7 @@ const Login = ({ onLogin }) => {
       }
     } catch (error) {
       console.error("Login error:", error);
+      alert("Invalid credentials");
     }
   };
 
