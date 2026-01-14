@@ -457,3 +457,105 @@ class EventEdgeCaseTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Event.objects.first().event_name, special_name)
+
+
+class EventStatusAndDatesTests(APITestCase):
+    """Tests for confirm/cancel and proposed-date endpoints."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username='owner', password='pass')
+        self.invitee = User.objects.create_user(username='invitee', password='pass')
+        self.owner_token, _ = Token.objects.get_or_create(user=self.owner)
+        self.invitee_token, _ = Token.objects.get_or_create(user=self.invitee)
+        self.api_client = APIClient()
+
+        # Create event with two proposed dates and an invite
+        self.event = Event.objects.create(event_name='Status Event', user=self.owner)
+        self.date1 = ProposedDate.objects.create(event=self.event, date=datetime.now().date())
+        self.date2 = ProposedDate.objects.create(event=self.event, date=(datetime.now().date() + timedelta(days=1)))
+        from core.models import EventInvite
+        EventInvite.objects.create(event=self.event, owner=self.owner, invitee=self.invitee)
+
+    def test_confirm_event_success(self):
+        url = reverse('events:confirm', args=[self.event.id])
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.owner_token.key}')
+        resp = self.api_client.post(url, {'proposed_date_id': self.date1.id}, format='json')
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.event.refresh_from_db()
+        self.assertEqual(self.event.status, Event.Status.CONFIRMED)
+        self.assertEqual(self.event.confirmed_date.id, self.date1.id)
+
+    def test_confirm_event_not_owner(self):
+        url = reverse('events:confirm', args=[self.event.id])
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.invitee_token.key}')
+        resp = self.api_client.post(url, {'proposed_date_id': self.date1.id}, format='json')
+
+        # Only owner may confirm; view returns 404 when not owner
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_confirm_event_invalid_date(self):
+        url = reverse('events:confirm', args=[self.event.id])
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.owner_token.key}')
+        resp = self.api_client.post(url, {'proposed_date_id': 99999}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_cancel_event_success(self):
+        url = reverse('events:cancel', args=[self.event.id])
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.owner_token.key}')
+        resp = self.api_client.post(url)
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.event.refresh_from_db()
+        self.assertEqual(self.event.status, Event.Status.CANCELLED)
+
+    def test_cancel_event_not_owner(self):
+        url = reverse('events:cancel', args=[self.event.id])
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.invitee_token.key}')
+        resp = self.api_client.post(url)
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_list_proposed_dates_owner_and_invitee(self):
+        url = reverse('events:list_dates', args=[self.event.id])
+
+        # Owner
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.owner_token.key}')
+        resp_owner = self.api_client.get(url)
+        self.assertEqual(resp_owner.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(resp_owner.data, list)
+        self.assertEqual(len(resp_owner.data), 2)
+
+        # Invitee
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.invitee_token.key}')
+        resp_inv = self.api_client.get(url)
+        self.assertEqual(resp_inv.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(resp_inv.data), 2)
+
+    def test_add_proposed_date_success_and_not_owner(self):
+        url = reverse('events:add_date', args=[self.event.id])
+        new_date = (datetime.now().date() + timedelta(days=5)).strftime('%Y-%m-%d')
+
+        # Owner can add
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.owner_token.key}')
+        resp = self.api_client.post(url, {'date': new_date}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(self.event.proposed_dates.count(), 3)
+
+        # Invitee cannot add
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.invitee_token.key}')
+        resp2 = self.api_client.post(url, {'date': (datetime.now().date() + timedelta(days=6)).strftime('%Y-%m-%d')}, format='json')
+        self.assertEqual(resp2.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_remove_proposed_date_success_and_edge_cases(self):
+        # Remove one of two dates (owner)
+        url = reverse('events:remove_date', args=[self.event.id, self.date1.id])
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.owner_token.key}')
+        resp = self.api_client.delete(url)
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(self.event.proposed_dates.count(), 1)
+
+        # Cannot remove last proposed date
+        last_date = self.event.proposed_dates.first()
+        url2 = reverse('events:remove_date', args=[self.event.id, last_date.id])
+        resp2 = self.api_client.delete(url2)
+        self.assertEqual(resp2.status_code, status.HTTP_400_BAD_REQUEST)
