@@ -1,11 +1,12 @@
 """
 Event-related views for calendar event management.
 """
+from datetime import datetime
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from core.serializers import EventSerializer, BulkEventCreateSerializer
+from core.serializers import EventSerializer, EventCreateSerializer, EventConfirmSerializer
 from core.services.event_service import EventService
 
 
@@ -13,55 +14,46 @@ from core.services.event_service import EventService
 @permission_classes([IsAuthenticated])
 def create_event(request):
     """
-    Create calendar event
+    Create an event proposal with multiple proposed dates and optional invitees.
     
     Args:
-        request: HTTP request containing event_name, dates array.
+        request: HTTP request containing event_name, proposed_dates array, and optional invitees array.
                 User must be authenticated.
     
     Returns:
-        Response with success message or error.
+        Response with success message and event_id or error.
     """
-    # Use the serializer for validation
-    serializer = BulkEventCreateSerializer(data=request.data)
+    serializer = EventCreateSerializer(data=request.data, context={'request': request})
     
     if not serializer.is_valid():
-        # Check if we need to maintain backward compatibility for empty dates error message
         errors = serializer.errors
-        if 'dates' in errors or 'event_name' in errors:
+        if 'proposed_dates' in errors or 'event_name' in errors:
             return Response(
-                {"error": "Event name and dates are required"}, 
+                {"error": "Event name and proposed dates are required"}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         return Response(errors, status=status.HTTP_400_BAD_REQUEST)
     
     validated_data = serializer.validated_data
-    event_name = validated_data['event_name']
-    dates = validated_data['dates']
     
-    try:
-        # Use the service layer for business logic
-        success, response_data = EventService.create_events(
-            event_name=event_name,
-            dates=dates,
-            user=request.user
-        )
-        
-        if success:
-            return Response(response_data, status=status.HTTP_201_CREATED)
-        else:
-            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+    success, response_data = EventService.create_event_proposal(
+        event_name=validated_data['event_name'],
+        proposed_dates=validated_data['proposed_dates'],
+        user=request.user,
+        invitees=validated_data.get('invitees', [])
+    )
     
-    except ValueError as e:
-        # Re-raise ValueError to maintain test compatibility
-        raise
+    if success:
+        return Response(response_data, status=status.HTTP_201_CREATED)
+    else:
+        return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def list_events(request):
     """
-    List all events for the authenticated user.
+    List all events for the authenticated user (owned or invited to).
     
     Args:
         request: HTTP request from an authenticated user.
@@ -69,10 +61,7 @@ def list_events(request):
     Returns:
         Response with serialized list of user's events.
     """
-    # Use the service layer to get events
     events = EventService.get_user_events(request.user)
-    
-    # Serialize the events
     serializer = EventSerializer(events, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -90,8 +79,7 @@ def get_event(request, event_id):
     Returns:
         Response with serialized event data or error.
     """
-    # Use the service layer to get the event
-    event = EventService.get_user_event_by_id(event_id, request.user)
+    event = EventService.get_event_by_id(event_id, request.user)
     
     if not event:
         return Response(
@@ -99,7 +87,6 @@ def get_event(request, event_id):
             status=status.HTTP_404_NOT_FOUND
         )
     
-    # Use the standard serializer for single event
     serializer = EventSerializer(event)
     return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -108,7 +95,8 @@ def get_event(request, event_id):
 @permission_classes([IsAuthenticated])
 def update_event(request, event_id):
     """
-    Update an existing event.
+    Update an existing event (only event_name can be updated).
+    Only the owner can update.
     
     Args:
         request: HTTP request containing updated event data.
@@ -117,7 +105,6 @@ def update_event(request, event_id):
     Returns:
         Response with updated event data or error.
     """
-    # Use the service layer to update the event
     success, result = EventService.update_event(
         event_id=event_id,
         user=request.user,
@@ -125,14 +112,13 @@ def update_event(request, event_id):
     )
     
     if success:
-        # result is the serializer instance
         return Response(result.data, status=status.HTTP_200_OK)
     else:
         if isinstance(result, dict) and 'error' in result:
-            return Response(result, status=status.HTTP_404_NOT_FOUND)
-        else:
-            # result is the serializer with errors
-            return Response(result.errors, status=status.HTTP_400_BAD_REQUEST)
+            if result['error'] == "Event not found":
+                return Response(result, status=status.HTTP_404_NOT_FOUND)
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['DELETE'])
@@ -140,6 +126,7 @@ def update_event(request, event_id):
 def delete_event(request, event_id):
     """
     Delete a specific event.
+    Only the owner can delete.
     
     Args:
         request: HTTP request from an authenticated user.
@@ -148,7 +135,6 @@ def delete_event(request, event_id):
     Returns:
         Response with success message or error.
     """
-    # Use the service layer to delete the event
     success, response_data = EventService.delete_event(
         event_id=event_id,
         user=request.user
@@ -164,3 +150,173 @@ def delete_event(request, event_id):
             response_data, 
             status=status.HTTP_404_NOT_FOUND
         )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def confirm_event(request, event_id):
+    """
+    Confirm an event with a specific proposed date.
+    Only the owner can confirm.
+    
+    Args:
+        request: HTTP request containing proposed_date_id.
+        event_id: ID of the event to confirm.
+    
+    Returns:
+        Response with updated event data or error.
+    """
+    # First check if event exists
+    event = EventService.get_event_by_id_owner_only(event_id, request.user)
+    if not event:
+        return Response(
+            {"error": "Event not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    serializer = EventConfirmSerializer(
+        data=request.data, 
+        context={'request': request, 'event': event}
+    )
+    
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    success, result = EventService.confirm_event(
+        event_id=event_id,
+        user=request.user,
+        proposed_date_id=serializer.validated_data['proposed_date_id']
+    )
+    
+    if success:
+        return Response(result.data, status=status.HTTP_200_OK)
+    else:
+        return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def cancel_event(request, event_id):
+    """
+    Cancel an event.
+    Only the owner can cancel.
+    
+    Args:
+        request: HTTP request from an authenticated user.
+        event_id: ID of the event to cancel.
+    
+    Returns:
+        Response with updated event data or error.
+    """
+    success, result = EventService.cancel_event(
+        event_id=event_id,
+        user=request.user
+    )
+    
+    if success:
+        return Response(result.data, status=status.HTTP_200_OK)
+    else:
+        if result.get('error') == "Event not found":
+            return Response(result, status=status.HTTP_404_NOT_FOUND)
+        return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_proposed_dates(request, event_id):
+    """
+    List all proposed dates for an event.
+    User must be owner or invitee.
+    
+    Args:
+        request: HTTP request from an authenticated user.
+        event_id: ID of the event.
+    
+    Returns:
+        Response with list of proposed dates or error.
+    """
+    success, result = EventService.get_proposed_dates(
+        event_id=event_id,
+        user=request.user
+    )
+    
+    if success:
+        return Response(result, status=status.HTTP_200_OK)
+    else:
+        return Response(result, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_proposed_date(request, event_id):
+    """
+    Add a proposed date to an event.
+    Only the event owner can add proposed dates.
+    
+    Args:
+        request: HTTP request containing date.
+        event_id: ID of the event.
+    
+    Returns:
+        Response with created proposed date data or error.
+    """
+    date_str = request.data.get('date')
+    
+    if not date_str:
+        return Response(
+            {"error": "Date is required"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        date_value = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return Response(
+            {"error": "Invalid date format. Use YYYY-MM-DD."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    success, result = EventService.add_proposed_date(
+        event_id=event_id,
+        date_value=date_value,
+        user=request.user
+    )
+    
+    if success:
+        return Response(result, status=status.HTTP_201_CREATED)
+    else:
+        if result.get('error') == "Event not found or you are not the owner":
+            return Response(result, status=status.HTTP_404_NOT_FOUND)
+        return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def remove_proposed_date(request, event_id, date_id):
+    """
+    Remove a proposed date from an event.
+    Only the event owner can remove proposed dates.
+    
+    Args:
+        request: HTTP request from an authenticated user.
+        event_id: ID of the event.
+        date_id: ID of the proposed date to remove.
+    
+    Returns:
+        Response with success message or error.
+    """
+    success, result = EventService.remove_proposed_date(
+        event_id=event_id,
+        date_id=date_id,
+        user=request.user
+    )
+    
+    if success:
+        return Response(result, status=status.HTTP_204_NO_CONTENT)
+    else:
+        error = result.get('error', '')
+        if error == "Event not found or you are not the owner":
+            return Response(result, status=status.HTTP_404_NOT_FOUND)
+        if error == "Proposed date not found":
+            return Response(result, status=status.HTTP_404_NOT_FOUND)
+        return Response(result, status=status.HTTP_400_BAD_REQUEST)

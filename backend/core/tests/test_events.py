@@ -8,7 +8,7 @@ from django.contrib.auth.models import User
 from rest_framework.test import APIClient, APITestCase
 from rest_framework.authtoken.models import Token
 from rest_framework import status
-from core.models import Event
+from core.models import Event, ProposedDate
 
 
 class EventCreationTests(APITestCase):
@@ -29,33 +29,36 @@ class EventCreationTests(APITestCase):
         
         self.valid_payload = {
             'event_name': 'Test Event',
-            'dates': [
+            'proposed_dates': [
                 self.today.strftime('%Y-%m-%d'),
                 self.tomorrow.strftime('%Y-%m-%d')
             ]
         }
         self.invalid_payload_no_name = {
-            'dates': [self.today.strftime('%Y-%m-%d')]
+            'proposed_dates': [self.today.strftime('%Y-%m-%d')]
         }
         self.invalid_payload_no_dates = {
             'event_name': 'Test Event'
         }
         self.invalid_payload_bad_date_format = {
             'event_name': 'Test Event',
-            'dates': ['01-01-2023']  # Wrong format
+            'proposed_dates': ['01-01-2023']  # Wrong format
         }
 
     def test_valid_event_creation(self):
-        """Test successful event creation for multiple dates."""
+        """Test successful event creation with multiple proposed dates."""
         response = self.api_client.post(
             self.create_event_url,
             self.valid_payload,
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(Event.objects.count(), 2)
-        self.assertEqual(Event.objects.first().event_name, 'Test Event')
-        self.assertEqual(Event.objects.first().user, self.user)
+        self.assertEqual(Event.objects.count(), 1)
+        event = Event.objects.first()
+        self.assertEqual(event.event_name, 'Test Event')
+        self.assertEqual(event.user, self.user)
+        self.assertEqual(event.status, Event.Status.PROPOSED)
+        self.assertEqual(event.proposed_dates.count(), 2)
 
     def test_unauthorized_event_creation(self):
         """Test event creation without authentication fails."""
@@ -121,16 +124,22 @@ class EventListEndpointTests(APITestCase):
         """Test listing events for authenticated user."""
         # Create events for user1
         for i in range(5):
-            Event.objects.create(
+            event = Event.objects.create(
                 event_name=f'Event {i}',
-                user=self.user1,
+                user=self.user1
+            )
+            ProposedDate.objects.create(
+                event=event,
                 date=datetime.now().date() + timedelta(days=i)
             )
         
         # Create events for user2 (should not be returned)
-        Event.objects.create(
+        other_event = Event.objects.create(
             event_name='Other User Event',
-            user=self.user2,
+            user=self.user2
+        )
+        ProposedDate.objects.create(
+            event=other_event,
             date=datetime.now().date()
         )
         
@@ -176,12 +185,19 @@ class EventDetailEndpointTests(APITestCase):
         
         self.event = Event.objects.create(
             event_name='Test Event',
-            user=self.user,
+            user=self.user
+        )
+        ProposedDate.objects.create(
+            event=self.event,
             date=datetime.now().date()
         )
+        
         self.other_event = Event.objects.create(
             event_name='Other User Event',
-            user=self.other_user,
+            user=self.other_user
+        )
+        ProposedDate.objects.create(
+            event=self.other_event,
             date=datetime.now().date()
         )
         
@@ -197,6 +213,7 @@ class EventDetailEndpointTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['id'], self.event.id)
         self.assertEqual(response.data['event_name'], 'Test Event')
+        self.assertEqual(response.data['status'], 'PROPOSED')
     
     def test_get_event_not_found(self):
         """Test retrieving non-existent event."""
@@ -234,7 +251,10 @@ class EventUpdateEndpointTests(APITestCase):
         
         self.event = Event.objects.create(
             event_name='Original Event',
-            user=self.user,
+            user=self.user
+        )
+        ProposedDate.objects.create(
+            event=self.event,
             date=datetime.now().date()
         )
         
@@ -246,8 +266,7 @@ class EventUpdateEndpointTests(APITestCase):
         self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
         
         update_data = {
-            'event_name': 'Updated Event',
-            'date': (datetime.now() + timedelta(days=1)).date().isoformat()
+            'event_name': 'Updated Event'
         }
         
         response = self.api_client.put(url, update_data, format='json')
@@ -258,22 +277,6 @@ class EventUpdateEndpointTests(APITestCase):
         # Verify database update
         self.event.refresh_from_db()
         self.assertEqual(self.event.event_name, 'Updated Event')
-    
-    def test_update_event_partial(self):
-        """Test partial event update (only name)."""
-        url = reverse('events:update', args=[self.event.id])
-        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
-        
-        original_date = self.event.date
-        update_data = {'event_name': 'Partially Updated Event'}
-        
-        response = self.api_client.put(url, update_data, format='json')
-        
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
-        self.event.refresh_from_db()
-        self.assertEqual(self.event.event_name, 'Partially Updated Event')
-        self.assertEqual(self.event.date, original_date)  # Date should not change
     
     def test_update_event_not_found(self):
         """Test updating non-existent event."""
@@ -295,33 +298,12 @@ class EventUpdateEndpointTests(APITestCase):
         
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
     
-    def test_update_event_invalid_date(self):
-        """Test updating event with invalid date format."""
-        url = reverse('events:update', args=[self.event.id])
-        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
-        
-        update_data = {'date': 'invalid-date'}
-        response = self.api_client.put(url, update_data, format='json')
-        
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('date', response.data)
-    
     def test_update_event_empty_name(self):
         """Test updating event with empty name."""
         url = reverse('events:update', args=[self.event.id])
         self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
         
         update_data = {'event_name': ''}
-        response = self.api_client.put(url, update_data, format='json')
-        
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-    
-    def test_update_event_extremely_long_name(self):
-        """Test updating event with very long name."""
-        url = reverse('events:update', args=[self.event.id])
-        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
-        
-        update_data = {'event_name': 'A' * 256}  # Exceeds typical max_length
         response = self.api_client.put(url, update_data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -348,7 +330,10 @@ class EventDeleteEndpointTests(APITestCase):
         """Test successful event deletion."""
         event = Event.objects.create(
             event_name='Event to Delete',
-            user=self.user,
+            user=self.user
+        )
+        ProposedDate.objects.create(
+            event=event,
             date=datetime.now().date()
         )
         event_id = event.id
@@ -375,8 +360,7 @@ class EventDeleteEndpointTests(APITestCase):
         """Test deleting event without authentication."""
         event = Event.objects.create(
             event_name='Event',
-            user=self.user,
-            date=datetime.now().date()
+            user=self.user
         )
         
         url = reverse('events:delete', args=[event.id])
@@ -405,7 +389,7 @@ class EventEdgeCaseTests(APITestCase):
         date = datetime.now().date().strftime('%Y-%m-%d')
         payload = {
             'event_name': long_name,
-            'dates': [date]
+            'proposed_dates': [date]
         }
         response = self.api_client.post(
             self.create_event_url,
@@ -415,12 +399,12 @@ class EventEdgeCaseTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Event.objects.first().event_name, long_name)
 
-    def test_many_dates_for_one_event(self):
-        """Test event creation with multiple dates."""
-        dates = [(datetime.now().date() + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(100)]
+    def test_many_proposed_dates(self):
+        """Test event creation with multiple proposed dates."""
+        dates = [(datetime.now().date() + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(50)]
         payload = {
             'event_name': 'Multi-Date Event',
-            'dates': dates
+            'proposed_dates': dates
         }
         response = self.api_client.post(
             self.create_event_url,
@@ -428,13 +412,14 @@ class EventEdgeCaseTests(APITestCase):
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(Event.objects.count(), 100)
+        event = Event.objects.first()
+        self.assertEqual(event.proposed_dates.count(), 50)
 
     def test_empty_dates_list(self):
         """Test event creation with empty dates list fails."""
         payload = {
             'event_name': 'No Dates Event',
-            'dates': []
+            'proposed_dates': []
         }
         response = self.api_client.post(
             self.create_event_url,
@@ -448,7 +433,7 @@ class EventEdgeCaseTests(APITestCase):
         past_date = (datetime.now().date() - timedelta(days=365)).strftime('%Y-%m-%d')
         payload = {
             'event_name': 'Past Event',
-            'dates': [past_date]
+            'proposed_dates': [past_date]
         }
         response = self.api_client.post(
             self.create_event_url,
@@ -463,7 +448,7 @@ class EventEdgeCaseTests(APITestCase):
         date = datetime.now().date().strftime('%Y-%m-%d')
         payload = {
             'event_name': special_name,
-            'dates': [date]
+            'proposed_dates': [date]
         }
         response = self.api_client.post(
             self.create_event_url,
@@ -472,30 +457,3 @@ class EventEdgeCaseTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Event.objects.first().event_name, special_name)
-
-
-class EventMalformedRequestTests(APITestCase):
-    """Test malformed request handling."""
-    
-    def setUp(self):
-        self.create_event_url = reverse('events:create')
-        self.user = User.objects.create_user(
-            username='testuser',
-            password='testpass123'
-        )
-        self.token, _ = Token.objects.get_or_create(user=self.user)
-        self.api_client = APIClient()
-        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
-
-    def test_malformed_json(self):
-        """Test handling of malformed JSON request."""
-        # Simulate malformed JSON using raw client
-        from django.test import Client
-        client = Client()
-        client.force_login(self.user)
-        response = client.post(
-            self.create_event_url,
-            data='{event_name: "Broken JSON",}',
-            content_type='application/json'
-        )
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

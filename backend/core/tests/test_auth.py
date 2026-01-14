@@ -144,7 +144,7 @@ class UserLogoutTests(APITestCase):
         """Test successful logout deletes token."""
         self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
         response = self.api_client.post(self.logout_url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Token.objects.filter(user=self.user).exists())
 
     def test_invalid_logout_no_token(self):

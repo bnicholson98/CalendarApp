@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework.test import APIClient, APITestCase
 from rest_framework import status
-from core.models import Event
+from core.models import Event, ProposedDate
 
 
 class UserJourneyIntegrationTests(APITestCase):
@@ -27,7 +27,7 @@ class UserJourneyIntegrationTests(APITestCase):
         self.today = datetime.now().date()
         self.event_data = {
             'event_name': 'Integration Event',
-            'dates': [self.today.strftime('%Y-%m-%d')]
+            'proposed_dates': [self.today.strftime('%Y-%m-%d')]
         }
         
     def test_full_user_journey(self):
@@ -51,9 +51,12 @@ class UserJourneyIntegrationTests(APITestCase):
         self.assertIn('token', login_response.json())
         token = login_response.json()['token']
         
+        # Set credentials for subsequent requests
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {token}')
+        
         # 3. Logout user
         logout_response = self.api_client.post(self.logout_url)
-        self.assertEqual(logout_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(logout_response.status_code, status.HTTP_204_NO_CONTENT)
         
         # 4. Verify can't create event after logout
         event_after_logout_response = self.api_client.post(
@@ -62,4 +65,110 @@ class UserJourneyIntegrationTests(APITestCase):
             format='json'
         )
         self.assertEqual(event_after_logout_response.status_code, status.HTTP_401_UNAUTHORIZED)
-        self.assertEqual(Event.objects.count(), 1)  # No new event created
+        self.assertEqual(Event.objects.count(), 0)  # No new event created
+
+
+class EventProposalIntegrationTests(APITestCase):
+    """Integration tests for the event proposal workflow."""
+    
+    def setUp(self):
+        self.register_url = reverse('auth:register')
+        self.login_url = reverse('auth:login')
+        self.create_event_url = reverse('events:create')
+        self.api_client = APIClient()
+        
+        # Create owner and invitees
+        self.owner = User.objects.create_user(username='owner', password='ownerpass')
+        self.invitee1 = User.objects.create_user(username='invitee1', password='inviteepass')
+        self.invitee2 = User.objects.create_user(username='invitee2', password='inviteepass')
+        
+        self.today = datetime.now().date()
+        self.tomorrow = self.today + timedelta(days=1)
+        self.day_after = self.today + timedelta(days=2)
+    
+    def test_full_event_proposal_workflow(self):
+        """Test complete event proposal workflow."""
+        # 1. Owner logs in
+        owner_login = self.api_client.post(
+            self.login_url,
+            {'username': 'owner', 'password': 'ownerpass'},
+            format='json'
+        )
+        owner_token = owner_login.json()['token']
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {owner_token}')
+        
+        # 2. Owner creates event proposal with invitees
+        event_data = {
+            'event_name': 'Team Planning',
+            'proposed_dates': [
+                self.today.strftime('%Y-%m-%d'),
+                self.tomorrow.strftime('%Y-%m-%d'),
+                self.day_after.strftime('%Y-%m-%d')
+            ],
+            'invitees': [self.invitee1.id, self.invitee2.id]
+        }
+        
+        create_response = self.api_client.post(
+            self.create_event_url,
+            event_data,
+            format='json'
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        event_id = create_response.data['event_id']
+        
+        # 3. Verify event was created with correct data
+        event = Event.objects.get(id=event_id)
+        self.assertEqual(event.status, Event.Status.PROPOSED)
+        self.assertEqual(event.proposed_dates.count(), 3)
+        self.assertEqual(event.invites.count(), 2)
+        
+        # 4. Invitee1 logs in and votes
+        invitee1_login = self.api_client.post(
+            self.login_url,
+            {'username': 'invitee1', 'password': 'inviteepass'},
+            format='json'
+        )
+        invitee1_token = invitee1_login.json()['token']
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {invitee1_token}')
+        
+        # Invitee1 votes on dates
+        proposed_dates = list(event.proposed_dates.all())
+        for i, pd in enumerate(proposed_dates):
+            vote_url = reverse('votes:vote', args=[event_id, pd.id])
+            availability = 'AVAILABLE' if i < 2 else 'NOT_AVAILABLE'
+            self.api_client.post(vote_url, {'availability': availability}, format='json')
+        
+        # 5. Invitee2 logs in and votes
+        invitee2_login = self.api_client.post(
+            self.login_url,
+            {'username': 'invitee2', 'password': 'inviteepass'},
+            format='json'
+        )
+        invitee2_token = invitee2_login.json()['token']
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {invitee2_token}')
+        
+        for i, pd in enumerate(proposed_dates):
+            vote_url = reverse('votes:vote', args=[event_id, pd.id])
+            availability = 'AVAILABLE' if i == 1 else 'MAYBE'
+            self.api_client.post(vote_url, {'availability': availability}, format='json')
+        
+        # 6. Owner checks votes and confirms event
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {owner_token}')
+        
+        votes_url = reverse('votes:list', args=[event_id])
+        votes_response = self.api_client.get(votes_url)
+        self.assertEqual(votes_response.status_code, status.HTTP_200_OK)
+        
+        # 7. Owner confirms the event with the most popular date (tomorrow)
+        confirm_url = reverse('events:confirm', args=[event_id])
+        confirm_response = self.api_client.post(
+            confirm_url,
+            {'proposed_date_id': proposed_dates[1].id},
+            format='json'
+        )
+        self.assertEqual(confirm_response.status_code, status.HTTP_200_OK)
+        
+        # 8. Verify event is confirmed
+        event.refresh_from_db()
+        self.assertEqual(event.status, Event.Status.CONFIRMED)
+        self.assertEqual(event.confirmed_date.id, proposed_dates[1].id)
