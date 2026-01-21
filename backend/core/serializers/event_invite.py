@@ -35,7 +35,7 @@ class EventInviteCreateSerializer(serializers.Serializer):
         request = self.context.get('request')
         event = data.get('event')
         invitee = data.get('invitee')
-        
+
         # Only event owner can create invites
         if event and request and event.user != request.user:
             raise serializers.ValidationError(

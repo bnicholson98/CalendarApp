@@ -27,21 +27,11 @@ class EventInviteService:
             
         Raises:
             NotFoundError: If event not found.
-            ValidationError: If user is not owner, trying to self-invite, or duplicate.
         """
         try:
             event = Event.objects.get(id=event_id)
         except Event.DoesNotExist:
             raise NotFoundError("Event not found")
-        
-        if event.user != user:
-            raise ValidationError("Only the event owner can create invites")
-        
-        if invitee_id == user.id:
-            raise ValidationError("You cannot invite yourself")
-        
-        if EventInvite.objects.filter(event_id=event_id, invitee_id=invitee_id).exists():
-            raise ValidationError("This user has already been invited to this event")
         
         invite = EventInvite.objects.create(
             event_id=event_id,
@@ -90,11 +80,14 @@ class EventInviteService:
         
         Returns:
             EventInvite instance or None if not found.
+
+        Raises:
+            NotFoundError: If invite not found.
         """
         try:
             return EventInvite.objects.get(id=invite_id)
         except EventInvite.DoesNotExist:
-            return None
+            raise NotFoundError("Event invite not found")
     
     @staticmethod
     def update_invite_status(invite_id: int, user: User, new_status: str) -> EventInvite:

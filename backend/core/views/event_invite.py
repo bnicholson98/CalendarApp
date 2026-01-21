@@ -31,26 +31,20 @@ def create_invite(request):
     serializer = EventInviteCreateSerializer(data=request.data, context={'request': request})
     
     if not serializer.is_valid():
-        errors = serializer.errors
-        if 'event' in errors or 'invitee' in errors:
-            return Response(
-                {"error": "Event and invitee are required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    validated_data = serializer.validated_data
     
     try:
         invite = EventInviteService.create_invite(
-            event_id=serializer.validated_data['event'].id,
-            invitee_id=serializer.validated_data['invitee'].id,
+            event_id=validated_data['event'].id,
+            invitee_id=validated_data['invitee'].id,
             user=request.user
         )
         output_serializer = EventInviteSerializer(invite)
         return Response(output_serializer.data, status=status.HTTP_201_CREATED)
     except NotFoundError as e:
         return Response({"error": e.message}, status=status.HTTP_404_NOT_FOUND)
-    except ValidationError as e:
-        return Response({"error": e.message}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['GET'])
@@ -100,16 +94,12 @@ def get_invite(request, invite_id):
     Returns:
         Response with serialized invite data or error.
     """
-    invite = EventInviteService.get_invite_by_id(invite_id, request.user)
-    
-    if not invite:
-        return Response(
-            {"error": "Invite not found"},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    
-    serializer = EventInviteSerializer(invite)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    try:
+        invite = EventInviteService.get_invite_by_id(invite_id, request.user)
+        serializer = EventInviteSerializer(invite)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    except NotFoundError as e:
+        return Response({"error": e.message}, status=status.HTTP_404_NOT_FOUND)
 
 
 @api_view(['PUT'])
@@ -129,13 +119,7 @@ def update_invite_status(request, invite_id):
     serializer = InviteStatusUpdateSerializer(data=request.data)
     
     if not serializer.is_valid():
-        errors = serializer.errors
-        if 'status' in errors:
-            return Response(
-                {"error": "Status is required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     validated_data = serializer.validated_data
     
