@@ -5,8 +5,10 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from core.serializers import VoteCreateSerializer
+
+from core.serializers import VoteCreateSerializer, DateVoteSerializer
 from core.services.vote_service import VoteService
+from core.exceptions import NotFoundError, ValidationError
 
 
 @api_view(['POST'])
@@ -37,22 +39,19 @@ def vote_on_date(request, event_id, date_id):
     
     validated_data = serializer.validated_data
     
-    success, result = VoteService.vote_on_date(
-        event_id=event_id,
-        date_id=date_id,
-        user=request.user,
-        availability=validated_data['availability']
-    )
-    
-    if success:
-        return Response(result.data, status=status.HTTP_200_OK)
-    else:
-        error = result.get('error', '')
-        if error == "Event not found or you don't have access":
-            return Response(result, status=status.HTTP_404_NOT_FOUND)
-        if error == "Proposed date not found":
-            return Response(result, status=status.HTTP_404_NOT_FOUND)
-        return Response(result, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        vote = VoteService.vote_on_date(
+            event_id=event_id,
+            date_id=date_id,
+            user=request.user,
+            availability=validated_data['availability']
+        )
+        output_serializer = DateVoteSerializer(vote)
+        return Response(output_serializer.data, status=status.HTTP_200_OK)
+    except NotFoundError as e:
+        return Response({"error": e.message}, status=status.HTTP_404_NOT_FOUND)
+    except ValidationError as e:
+        return Response({"error": e.message}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['GET'])
@@ -69,15 +68,11 @@ def get_event_votes(request, event_id):
     Returns:
         Response with all votes for each proposed date or error.
     """
-    success, result = VoteService.get_event_votes(
-        event_id=event_id,
-        user=request.user
-    )
-    
-    if success:
+    try:
+        result = VoteService.get_event_votes(event_id=event_id, user=request.user)
         return Response(result, status=status.HTTP_200_OK)
-    else:
-        return Response(result, status=status.HTTP_404_NOT_FOUND)
+    except NotFoundError as e:
+        return Response({"error": e.message}, status=status.HTTP_404_NOT_FOUND)
 
 
 @api_view(['GET'])
@@ -93,15 +88,12 @@ def get_my_votes(request, event_id):
     Returns:
         Response with user's votes or error.
     """
-    success, result = VoteService.get_user_votes_for_event(
-        event_id=event_id,
-        user=request.user
-    )
-    
-    if success:
-        return Response(result, status=status.HTTP_200_OK)
-    else:
-        return Response(result, status=status.HTTP_404_NOT_FOUND)
+    try:
+        votes = VoteService.get_user_votes_for_event(event_id=event_id, user=request.user)
+        serializer = DateVoteSerializer(votes, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    except NotFoundError as e:
+        return Response({"error": e.message}, status=status.HTTP_404_NOT_FOUND)
 
 
 @api_view(['DELETE'])
@@ -118,20 +110,10 @@ def delete_vote(request, event_id, date_id):
     Returns:
         Response with success message or error.
     """
-    success, result = VoteService.delete_vote(
-        event_id=event_id,
-        date_id=date_id,
-        user=request.user
-    )
-    
-    if success:
-        return Response(result, status=status.HTTP_204_NO_CONTENT)
-    else:
-        error = result.get('error', '')
-        if error == "Event not found or you don't have access":
-            return Response(result, status=status.HTTP_404_NOT_FOUND)
-        if error == "Proposed date not found":
-            return Response(result, status=status.HTTP_404_NOT_FOUND)
-        if error == "Vote not found":
-            return Response(result, status=status.HTTP_404_NOT_FOUND)
-        return Response(result, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        VoteService.delete_vote(event_id=event_id, date_id=date_id, user=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    except NotFoundError as e:
+        return Response({"error": e.message}, status=status.HTTP_404_NOT_FOUND)
+    except ValidationError as e:
+        return Response({"error": e.message}, status=status.HTTP_400_BAD_REQUEST)

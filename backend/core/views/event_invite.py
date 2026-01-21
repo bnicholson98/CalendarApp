@@ -5,8 +5,14 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from core.serializers import EventInviteSerializer, InviteStatusUpdateSerializer
+
+from core.serializers import (
+    EventInviteSerializer,
+    EventInviteCreateSerializer,
+    InviteStatusUpdateSerializer,
+)
 from core.services.event_invite_service import EventInviteService
+from core.exceptions import NotFoundError, ValidationError, PermissionDeniedError
 
 
 @api_view(['POST'])
@@ -22,7 +28,7 @@ def create_invite(request):
     Returns:
         Response with created invite data or error.
     """
-    serializer = EventInviteSerializer(data=request.data, context={'request': request})
+    serializer = EventInviteCreateSerializer(data=request.data, context={'request': request})
     
     if not serializer.is_valid():
         errors = serializer.errors
@@ -33,16 +39,18 @@ def create_invite(request):
             )
         return Response(errors, status=status.HTTP_400_BAD_REQUEST)
     
-    success, result = EventInviteService.create_invite(
-        event_id=serializer.validated_data['event'].id,
-        invitee_id=serializer.validated_data['invitee'].id,
-        user=request.user
-    )
-    
-    if success:
-        return Response(result.data, status=status.HTTP_201_CREATED)
-    else:
-        return Response(result, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        invite = EventInviteService.create_invite(
+            event_id=serializer.validated_data['event'].id,
+            invitee_id=serializer.validated_data['invitee'].id,
+            user=request.user
+        )
+        output_serializer = EventInviteSerializer(invite)
+        return Response(output_serializer.data, status=status.HTTP_201_CREATED)
+    except NotFoundError as e:
+        return Response({"error": e.message}, status=status.HTTP_404_NOT_FOUND)
+    except ValidationError as e:
+        return Response({"error": e.message}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['GET'])
@@ -131,20 +139,18 @@ def update_invite_status(request, invite_id):
     
     validated_data = serializer.validated_data
     
-    success, result = EventInviteService.update_invite_status(
-        invite_id=invite_id,
-        user=request.user,
-        new_status=validated_data['status']
-    )
-    
-    if success:
-        return Response(result.data, status=status.HTTP_200_OK)
-    else:
-        if result.get('error') == "Invite not found":
-            return Response(result, status=status.HTTP_404_NOT_FOUND)
-        elif result.get('error') == "Only the invitee can update the invite status":
-            return Response(result, status=status.HTTP_403_FORBIDDEN)
-        return Response(result, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        invite = EventInviteService.update_invite_status(
+            invite_id=invite_id,
+            user=request.user,
+            new_status=validated_data['status']
+        )
+        output_serializer = EventInviteSerializer(invite)
+        return Response(output_serializer.data, status=status.HTTP_200_OK)
+    except NotFoundError as e:
+        return Response({"error": e.message}, status=status.HTTP_404_NOT_FOUND)
+    except PermissionDeniedError as e:
+        return Response({"error": e.message}, status=status.HTTP_403_FORBIDDEN)
 
 
 @api_view(['DELETE'])
@@ -161,16 +167,10 @@ def delete_invite(request, invite_id):
     Returns:
         Response with success message or error.
     """
-    success, response_data = EventInviteService.delete_invite(
-        invite_id=invite_id,
-        user=request.user
-    )
-    
-    if success:
-        return Response(response_data, status=status.HTTP_204_NO_CONTENT)
-    else:
-        if response_data.get('error') == "Invite not found":
-            return Response(response_data, status=status.HTTP_404_NOT_FOUND)
-        elif response_data.get('error') == "Only the invite owner can delete the invite":
-            return Response(response_data, status=status.HTTP_403_FORBIDDEN)
-        return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        EventInviteService.delete_invite(invite_id=invite_id, user=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    except NotFoundError as e:
+        return Response({"error": e.message}, status=status.HTTP_404_NOT_FOUND)
+    except PermissionDeniedError as e:
+        return Response({"error": e.message}, status=status.HTTP_403_FORBIDDEN)

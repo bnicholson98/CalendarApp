@@ -4,14 +4,16 @@ Service layer for authentication-related business logic.
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict
+
+from core.exceptions import ValidationError, NotFoundError
 
 
 class AuthService:
     """Service class for handling authentication business logic."""
     
     @staticmethod
-    def register_user(username: str, password: str) -> Tuple[bool, Dict[str, str]]:
+    def register_user(username: str, password: str) -> Dict[str, str]:
         """
         Register a new user.
         
@@ -20,22 +22,22 @@ class AuthService:
             password: The password for the new user.
         
         Returns:
-            Tuple of (success: bool, response_data: dict)
+            Dict with success message.
+            
+        Raises:
+            ValidationError: If user already exists or creation fails.
         """
-        if not username or not password:
-            return False, {"error": "All fields are required"}
-        
         if User.objects.filter(username=username).exists():
-            return False, {"error": "User already exists"}
+            raise ValidationError("User already exists")
         
         try:
-            user = User.objects.create_user(username=username, password=password)
-            return True, {"message": "User created successfully"}
+            User.objects.create_user(username=username, password=password)
+            return {"message": "User created successfully"}
         except Exception as e:
-            return False, {"error": f"Failed to create user: {str(e)}"}
+            raise ValidationError(f"Failed to create user: {str(e)}")
     
     @staticmethod
-    def login_user(username: str, password: str) -> Tuple[bool, Dict[str, str]]:
+    def login_user(username: str, password: str) -> Dict[str, str]:
         """
         Authenticate and login a user.
         
@@ -44,21 +46,24 @@ class AuthService:
             password: The password to authenticate.
         
         Returns:
-            Tuple of (success: bool, response_data: dict)
+            Dict with token and username.
+            
+        Raises:
+            ValidationError: If credentials are invalid.
         """
         user = authenticate(username=username, password=password)
         
         if user:
             token, _ = Token.objects.get_or_create(user=user)
-            return True, {
+            return {
                 "token": token.key,
                 "userName": username
             }
         
-        return False, {"error": "Invalid credentials"}
+        raise ValidationError("Invalid credentials")
     
     @staticmethod
-    def logout_user(token: Optional[Token]) -> Tuple[bool, Dict[str, str]]:
+    def logout_user(token: Optional[Token]) -> Dict[str, str]:
         """
         Logout a user by deleting their authentication token.
         
@@ -66,10 +71,13 @@ class AuthService:
             token: The authentication token to delete.
         
         Returns:
-            Tuple of (success: bool, response_data: dict)
+            Dict with success message.
+            
+        Raises:
+            ValidationError: If token is invalid.
         """
         if token:
             token.delete()
-            return True, {"message": "Logged out successfully"}
+            return {"message": "Logged out successfully"}
         
-        return False, {"error": "Invalid token"}
+        raise ValidationError("Invalid token")

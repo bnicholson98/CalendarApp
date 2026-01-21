@@ -1,12 +1,14 @@
 """
 Service layer for event-related business logic.
 """
-from typing import List, Dict, Optional, Tuple
-from datetime import date, datetime
+from typing import List, Dict, Optional
+from datetime import date
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, QuerySet
+
 from core.models import Event, EventInvite, ProposedDate
+from core.exceptions import NotFoundError, ValidationError
 
 
 class EventService:
@@ -28,10 +30,10 @@ class EventService:
     @staticmethod
     def create_event_proposal(
         event_name: str, 
-        proposed_dates: List[datetime], 
+        proposed_dates: List[date], 
         user: User,
         invitees: List[int] = None
-    ) -> Tuple[bool, Dict]:
+    ) -> Dict:
         """
         Create an event proposal with multiple proposed dates and optional invitees.
         
@@ -42,7 +44,10 @@ class EventService:
             invitees: Optional list of user IDs to invite.
         
         Returns:
-            Tuple of (success: bool, response_data: dict)
+            Dict with event_id and success message.
+            
+        Raises:
+            ValidationError: If event creation fails.
         """
         try:
             with transaction.atomic():
@@ -78,13 +83,13 @@ class EventService:
                     
                     EventInvite.objects.bulk_create(invite_instances)
                 
-                return True, {"event_id": event.id, "message": "Event proposal created successfully"}
+                return {"event_id": event.id, "message": "Event proposal created successfully"}
         
         except Exception as e:
-            return False, {"error": f"Failed to create event proposal: {str(e)}"}
+            raise ValidationError(f"Failed to create event proposal: {str(e)}")
     
     @staticmethod
-    def get_user_events(user: User) -> List[Event]:
+    def get_user_events(user: User) -> QuerySet[Event]:
         """
         Get all events for a specific user (owned or invited to).
         
@@ -99,7 +104,7 @@ class EventService:
         ).distinct().order_by('-created_at')
     
     @staticmethod
-    def get_user_owned_events(user: User) -> List[Event]:
+    def get_user_owned_events(user: User) -> QuerySet[Event]:
         """
         Get all events owned by a specific user.
         
@@ -148,7 +153,7 @@ class EventService:
             return None
     
     @staticmethod
-    def update_event(event_id: int, user: User, data: Dict) -> Tuple[bool, Dict]:
+    def update_event(event_id: int, user: User, event_name: str) -> Event:
         """
         Update an existing event (only event_name can be updated).
         Only the owner can update.
@@ -156,31 +161,30 @@ class EventService:
         Args:
             event_id: ID of the event to update.
             user: User who owns the event.
-            data: Dictionary containing update data.
+            event_name: New event name.
         
         Returns:
-            Tuple of (success: bool, response_data: dict or serializer)
+            Updated Event instance.
+            
+        Raises:
+            NotFoundError: If event not found or user is not owner.
+            ValidationError: If event_name is invalid.
         """
         event = EventService.get_event_by_id_owner_only(event_id, user)
         
         if not event:
-            return False, {"error": "Event not found"}
+            raise NotFoundError("Event not found")
         
-        # Only allow updating event_name
-        if 'event_name' in data:
-            event_name = data['event_name']
-            if not event_name or not event_name.strip():
-                return False, {"error": "Event name cannot be empty"}
-            event.event_name = event_name.strip()
-            event.save()
+        if not event_name or not event_name.strip():
+            raise ValidationError("Event name cannot be empty")
         
-        from core.serializers import EventSerializer
-        context = {'request': type('obj', (object,), {'user': user})}
-        serializer = EventSerializer(event, context=context)
-        return True, serializer
+        event.event_name = event_name.strip()
+        event.save()
+        
+        return event
     
     @staticmethod
-    def delete_event(event_id: int, user: User) -> Tuple[bool, Dict]:
+    def delete_event(event_id: int, user: User) -> Dict:
         """
         Delete a specific event.
         Only the owner can delete.
@@ -190,21 +194,21 @@ class EventService:
             user: User who owns the event.
         
         Returns:
-            Tuple of (success: bool, response_data: dict)
+            Dict with success message.
+            
+        Raises:
+            NotFoundError: If event not found or user is not owner.
         """
         event = EventService.get_event_by_id_owner_only(event_id, user)
         
         if not event:
-            return False, {"error": "Event not found"}
+            raise NotFoundError("Event not found")
         
-        try:
-            event.delete()
-            return True, {"message": "Event deleted successfully"}
-        except Exception as e:
-            return False, {"error": f"Failed to delete event: {str(e)}"}
+        event.delete()
+        return {"message": "Event deleted successfully"}
     
     @staticmethod
-    def confirm_event(event_id: int, user: User, proposed_date_id: int) -> Tuple[bool, Dict]:
+    def confirm_event(event_id: int, user: User, proposed_date_id: int) -> Event:
         """
         Confirm an event with a specific proposed date.
         Only the owner can confirm.
@@ -215,35 +219,36 @@ class EventService:
             proposed_date_id: ID of the proposed date to confirm.
         
         Returns:
-            Tuple of (success: bool, response_data: dict)
+            Updated Event instance.
+            
+        Raises:
+            NotFoundError: If event or proposed date not found.
+            ValidationError: If event is already confirmed or cancelled.
         """
         event = EventService.get_event_by_id_owner_only(event_id, user)
         
         if not event:
-            return False, {"error": "Event not found"}
+            raise NotFoundError("Event not found")
         
         if event.status == Event.Status.CONFIRMED:
-            return False, {"error": "Event is already confirmed"}
+            raise ValidationError("Event is already confirmed")
         
         if event.status == Event.Status.CANCELLED:
-            return False, {"error": "Cannot confirm a cancelled event"}
+            raise ValidationError("Cannot confirm a cancelled event")
         
         try:
             proposed_date = ProposedDate.objects.get(id=proposed_date_id, event=event)
         except ProposedDate.DoesNotExist:
-            return False, {"error": "Proposed date not found or does not belong to this event"}
+            raise ValidationError("Proposed date not found or does not belong to this event")
         
         event.status = Event.Status.CONFIRMED
         event.confirmed_date = proposed_date
         event.save()
         
-        from core.serializers import EventSerializer
-        context = {'request': type('obj', (object,), {'user': user})}
-        serializer = EventSerializer(event, context=context)
-        return True, serializer
+        return event
     
     @staticmethod
-    def cancel_event(event_id: int, user: User) -> Tuple[bool, Dict]:
+    def cancel_event(event_id: int, user: User) -> Event:
         """
         Cancel an event.
         Only the owner can cancel.
@@ -253,26 +258,27 @@ class EventService:
             user: User who owns the event.
         
         Returns:
-            Tuple of (success: bool, response_data: dict)
+            Updated Event instance.
+            
+        Raises:
+            NotFoundError: If event not found or user is not owner.
+            ValidationError: If event is already cancelled.
         """
         event = EventService.get_event_by_id_owner_only(event_id, user)
         
         if not event:
-            return False, {"error": "Event not found"}
+            raise NotFoundError("Event not found")
         
         if event.status == Event.Status.CANCELLED:
-            return False, {"error": "Event is already cancelled"}
+            raise ValidationError("Event is already cancelled")
         
         event.status = Event.Status.CANCELLED
         event.save()
         
-        from core.serializers import EventSerializer
-        context = {'request': type('obj', (object,), {'user': user})}
-        serializer = EventSerializer(event, context=context)
-        return True, serializer
+        return event
     
     @staticmethod
-    def add_proposed_date(event_id: int, date_value: date, user: User) -> Tuple[bool, Dict]:
+    def add_proposed_date(event_id: int, date_value: date, user: User) -> ProposedDate:
         """
         Add a proposed date to an event.
         Only the event owner can add proposed dates.
@@ -283,38 +289,36 @@ class EventService:
             user: User making the request (must be event owner).
         
         Returns:
-            Tuple of (success: bool, response_data: dict)
+            Created ProposedDate instance.
+            
+        Raises:
+            NotFoundError: If event not found or user is not owner.
+            ValidationError: If event status doesn't allow or date already exists.
         """
         event = EventService.get_event_by_id_owner_only(event_id, user)
         
         if not event:
-            return False, {"error": "Event not found or you are not the owner"}
+            raise NotFoundError("Event not found or you are not the owner")
         
         if event.status == Event.Status.CONFIRMED:
-            return False, {"error": "Cannot add dates to a confirmed event"}
+            raise ValidationError("Cannot add dates to a confirmed event")
         
         if event.status == Event.Status.CANCELLED:
-            return False, {"error": "Cannot add dates to a cancelled event"}
+            raise ValidationError("Cannot add dates to a cancelled event")
         
         # Check if date already exists for this event
         if ProposedDate.objects.filter(event=event, date=date_value).exists():
-            return False, {"error": "This date has already been proposed for this event"}
+            raise ValidationError("This date has already been proposed for this event")
         
-        try:
-            proposed_date = ProposedDate.objects.create(
-                event=event,
-                date=date_value
-            )
-            
-            from core.serializers import ProposedDateSerializer
-            serializer = ProposedDateSerializer(proposed_date)
-            return True, serializer.data
+        proposed_date = ProposedDate.objects.create(
+            event=event,
+            date=date_value
+        )
         
-        except Exception as e:
-            return False, {"error": f"Failed to add proposed date: {str(e)}"}
+        return proposed_date
     
     @staticmethod
-    def remove_proposed_date(event_id: int, date_id: int, user: User) -> Tuple[bool, Dict]:
+    def remove_proposed_date(event_id: int, date_id: int, user: User) -> Dict:
         """
         Remove a proposed date from an event.
         Only the event owner can remove proposed dates.
@@ -327,37 +331,38 @@ class EventService:
             user: User making the request (must be event owner).
         
         Returns:
-            Tuple of (success: bool, response_data: dict)
+            Dict with success message.
+            
+        Raises:
+            NotFoundError: If event or proposed date not found.
+            ValidationError: If removal is not allowed.
         """
         event = EventService.get_event_by_id_owner_only(event_id, user)
         
         if not event:
-            return False, {"error": "Event not found or you are not the owner"}
+            raise NotFoundError("Event not found or you are not the owner")
         
         if event.status == Event.Status.CANCELLED:
-            return False, {"error": "Cannot modify a cancelled event"}
+            raise ValidationError("Cannot modify a cancelled event")
         
         try:
             proposed_date = ProposedDate.objects.get(id=date_id, event=event)
         except ProposedDate.DoesNotExist:
-            return False, {"error": "Proposed date not found"}
+            raise NotFoundError("Proposed date not found")
         
         # Cannot remove the confirmed date
         if event.confirmed_date and event.confirmed_date.id == date_id:
-            return False, {"error": "Cannot remove the confirmed date"}
+            raise ValidationError("Cannot remove the confirmed date")
         
         # Cannot remove the last proposed date
         if event.proposed_dates.count() <= 1:
-            return False, {"error": "Cannot remove the last proposed date"}
+            raise ValidationError("Cannot remove the last proposed date")
         
-        try:
-            proposed_date.delete()
-            return True, {"message": "Proposed date removed successfully"}
-        except Exception as e:
-            return False, {"error": f"Failed to remove proposed date: {str(e)}"}
+        proposed_date.delete()
+        return {"message": "Proposed date removed successfully"}
     
     @staticmethod
-    def get_proposed_dates(event_id: int, user: User) -> Tuple[bool, Dict]:
+    def get_proposed_dates(event_id: int, user: User) -> QuerySet[ProposedDate]:
         """
         Get all proposed dates for an event.
         User must be owner or invitee.
@@ -367,15 +372,14 @@ class EventService:
             user: User making the request.
         
         Returns:
-            Tuple of (success: bool, response_data: dict or list)
+            QuerySet of ProposedDate instances.
+            
+        Raises:
+            NotFoundError: If event not found or user has no access.
         """
         event = EventService.get_event_by_id(event_id, user)
         
         if not event:
-            return False, {"error": "Event not found"}
+            raise NotFoundError("Event not found")
         
-        proposed_dates = event.proposed_dates.all()
-        
-        from core.serializers import ProposedDateSerializer
-        serializer = ProposedDateSerializer(proposed_dates, many=True)
-        return True, serializer.data
+        return event.proposed_dates.all()

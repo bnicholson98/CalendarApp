@@ -1,14 +1,14 @@
 """
 Authentication-related views for user registration, login, and logout.
 """
-from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.decorators import api_view, authentication_classes
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
-from rest_framework.permissions import IsAuthenticated
 
 from core.serializers import UserRegistrationSerializer, LoginSerializer
 from core.services.auth_service import AuthService
+from core.exceptions import ValidationError
 
 
 @api_view(["POST"])
@@ -20,14 +20,11 @@ def register_user(request):
         request: HTTP request containing username and password in data.
     
     Returns:
-        JsonResponse with success message or error.
+        Response with success message or error.
     """
-    # Use serializer for validation
     serializer = UserRegistrationSerializer(data=request.data)
     
-    # Check if data is valid
     if not serializer.is_valid():
-        # Maintain backward compatibility with original error messages
         errors = serializer.errors
         if 'username' in errors or 'password' in errors:
             return Response(
@@ -37,19 +34,15 @@ def register_user(request):
         return Response(errors, status=status.HTTP_400_BAD_REQUEST)
     
     validated_data = serializer.validated_data
-    username = validated_data.get('username')
-    password = validated_data.get('password')
     
-    # Use the service layer for business logic
-    success, response_data = AuthService.register_user(
-        username=username,
-        password=password
-    )
-    
-    if success:
+    try:
+        response_data = AuthService.register_user(
+            username=validated_data['username'],
+            password=validated_data['password']
+        )
         return Response(response_data, status=status.HTTP_201_CREATED)
-    else:
-        return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        return Response({"error": e.message}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(["POST"])
@@ -72,18 +65,15 @@ def login_user(request):
         )
     
     validated_data = serializer.validated_data
-    username = validated_data.get('username')
-    password = validated_data.get('password')
     
-    success, response_data = AuthService.login_user(
-        username=username,
-        password=password
-    )
-    
-    if success:
+    try:
+        response_data = AuthService.login_user(
+            username=validated_data['username'],
+            password=validated_data['password']
+        )
         return Response(response_data, status=status.HTTP_200_OK)
-    else:
-        return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        return Response({"error": e.message}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(["POST"])
@@ -98,9 +88,8 @@ def logout_user(request):
     Returns:
         Response with success message or error.
     """
-    success, response_data = AuthService.logout_user(request.auth)
-    
-    if success:
-        return Response(response_data, status=status.HTTP_204_NO_CONTENT)
-    else:
-        return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        AuthService.logout_user(request.auth)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    except ValidationError as e:
+        return Response({"error": e.message}, status=status.HTTP_400_BAD_REQUEST)

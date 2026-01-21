@@ -1,18 +1,19 @@
 """
 Service layer for event invite-related business logic.
 """
-from typing import List, Dict, Optional, Tuple
+from typing import List, Optional, Dict
 from django.contrib.auth.models import User
-from django.db import transaction
+from django.db.models import QuerySet
+
 from core.models import Event, EventInvite
-from core.serializers import EventInviteSerializer
+from core.exceptions import NotFoundError, ValidationError, PermissionDeniedError
 
 
 class EventInviteService:
     """Service class for handling event invite business logic."""
     
     @staticmethod
-    def create_invite(event_id: int, invitee_id: int, user: User) -> Tuple[bool, Dict]:
+    def create_invite(event_id: int, invitee_id: int, user: User) -> EventInvite:
         """
         Create an event invite.
         
@@ -22,39 +23,37 @@ class EventInviteService:
             user: User creating the invite (must be event owner).
         
         Returns:
-            Tuple of (success: bool, response_data: dict or serializer)
+            Created EventInvite instance.
+            
+        Raises:
+            NotFoundError: If event not found.
+            ValidationError: If user is not owner, trying to self-invite, or duplicate.
         """
         try:
             event = Event.objects.get(id=event_id)
         except Event.DoesNotExist:
-            return False, {"error": "Event not found"}
+            raise NotFoundError("Event not found")
         
         if event.user != user:
-            return False, {"error": "Only the event owner can create invites"}
+            raise ValidationError("Only the event owner can create invites")
         
         if invitee_id == user.id:
-            return False, {"error": "You cannot invite yourself"}
+            raise ValidationError("You cannot invite yourself")
         
         if EventInvite.objects.filter(event_id=event_id, invitee_id=invitee_id).exists():
-            return False, {"error": "This user has already been invited to this event"}
+            raise ValidationError("This user has already been invited to this event")
         
-        try:
-            invite = EventInvite.objects.create(
-                event_id=event_id,
-                owner=user,
-                invitee_id=invitee_id,
-                status=EventInvite.Status.PENDING
-            )
-            
-            context = {'request': type('obj', (object,), {'user': user})}
-            serializer = EventInviteSerializer(invite, context=context)
-            return True, serializer
+        invite = EventInvite.objects.create(
+            event_id=event_id,
+            owner=user,
+            invitee_id=invitee_id,
+            status=EventInvite.Status.PENDING
+        )
         
-        except Exception as e:
-            return False, {"error": f"Failed to create invite: {str(e)}"}
+        return invite
     
     @staticmethod
-    def get_user_received_invites(user: User) -> List[EventInvite]:
+    def get_user_received_invites(user: User) -> QuerySet[EventInvite]:
         """
         Get all invites received by a user.
         
@@ -67,7 +66,7 @@ class EventInviteService:
         return EventInvite.objects.filter(invitee=user).order_by('-created_at')
     
     @staticmethod
-    def get_user_sent_invites(user: User) -> List[EventInvite]:
+    def get_user_sent_invites(user: User) -> QuerySet[EventInvite]:
         """
         Get all invites sent by a user.
         
@@ -93,14 +92,12 @@ class EventInviteService:
             EventInvite instance or None if not found.
         """
         try:
-            return EventInvite.objects.get(
-                id=invite_id,
-            )
+            return EventInvite.objects.get(id=invite_id)
         except EventInvite.DoesNotExist:
             return None
     
     @staticmethod
-    def update_invite_status(invite_id: int, user: User, new_status: str) -> Tuple[bool, Dict]:
+    def update_invite_status(invite_id: int, user: User, new_status: str) -> EventInvite:
         """
         Update the status of an invite.
         Only the invitee can update the status.
@@ -111,26 +108,28 @@ class EventInviteService:
             new_status: New status value.
         
         Returns:
-            Tuple of (success: bool, response_data: dict or serializer)
+            Updated EventInvite instance.
+            
+        Raises:
+            NotFoundError: If invite not found.
+            PermissionDeniedError: If user is not the invitee.
         """
         try:
             invite = EventInvite.objects.get(id=invite_id)
         except EventInvite.DoesNotExist:
-            return False, {"error": "Invite not found"}
+            raise NotFoundError("Invite not found")
         
         # Only invitee can update status
         if invite.invitee != user:
-            return False, {"error": "Only the invitee can update the invite status"}
+            raise PermissionDeniedError("Only the invitee can update the invite status")
         
         invite.status = new_status
         invite.save()
         
-        context = {'request': type('obj', (object,), {'user': user})}
-        serializer = EventInviteSerializer(invite, context=context)
-        return True, serializer
+        return invite
     
     @staticmethod
-    def delete_invite(invite_id: int, user: User) -> Tuple[bool, Dict]:
+    def delete_invite(invite_id: int, user: User) -> Dict:
         """
         Delete a specific invite.
         Only the owner can delete an invite.
@@ -140,19 +139,20 @@ class EventInviteService:
             user: User who owns the invite.
         
         Returns:
-            Tuple of (success: bool, response_data: dict)
+            Dict with success message.
+            
+        Raises:
+            NotFoundError: If invite not found.
+            PermissionDeniedError: If user is not the owner.
         """
         try:
             invite = EventInvite.objects.get(id=invite_id)
         except EventInvite.DoesNotExist:
-            return False, {"error": "Invite not found"}
+            raise NotFoundError("Invite not found")
         
         # Only owner can delete invite
         if invite.owner != user:
-            return False, {"error": "Only the invite owner can delete the invite"}
+            raise PermissionDeniedError("Only the invite owner can delete the invite")
         
-        try:
-            invite.delete()
-            return True, {"message": "Invite deleted successfully"}
-        except Exception as e:
-            return False, {"error": f"Failed to delete invite: {str(e)}"}
+        invite.delete()
+        return {"message": "Invite deleted successfully"}

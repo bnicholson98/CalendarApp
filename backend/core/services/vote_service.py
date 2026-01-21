@@ -1,11 +1,13 @@
 """
 Service layer for vote-related business logic.
 """
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict
 from django.contrib.auth.models import User
-from django.db import transaction
-from core.models import Event, ProposedDate, DateVote, EventInvite
+from django.db.models import QuerySet
+
+from core.models import Event, ProposedDate, DateVote
 from core.services.event_service import EventService
+from core.exceptions import NotFoundError, ValidationError
 
 
 class VoteService:
@@ -17,7 +19,7 @@ class VoteService:
         date_id: int, 
         user: User, 
         availability: str
-    ) -> Tuple[bool, Dict]:
+    ) -> DateVote:
         """
         Vote on availability for a proposed date.
         User must be invited to the event (or be the owner).
@@ -29,42 +31,40 @@ class VoteService:
             availability: Availability choice (AVAILABLE, MAYBE, NOT_AVAILABLE).
         
         Returns:
-            Tuple of (success: bool, response_data: dict)
+            DateVote instance (created or updated).
+            
+        Raises:
+            NotFoundError: If event or proposed date not found.
+            ValidationError: If event is cancelled or confirmed.
         """
         event = EventService.get_event_by_id(event_id, user)
         
         if not event:
-            return False, {"error": "Event not found or you don't have access"}
+            raise NotFoundError("Event not found or you don't have access")
         
         if event.status == Event.Status.CANCELLED:
-            return False, {"error": "Cannot vote on a cancelled event"}
+            raise ValidationError("Cannot vote on a cancelled event")
         
         if event.status == Event.Status.CONFIRMED:
-            return False, {"error": "Cannot vote on a confirmed event"}
+            raise ValidationError("Cannot vote on a confirmed event")
         
         # Check if proposed date exists and belongs to event
         try:
             proposed_date = ProposedDate.objects.get(id=date_id, event=event)
         except ProposedDate.DoesNotExist:
-            return False, {"error": "Proposed date not found"}
+            raise NotFoundError("Proposed date not found")
         
         # Create or update vote
-        try:
-            vote, created = DateVote.objects.update_or_create(
-                proposed_date=proposed_date,
-                user=user,
-                defaults={'availability': availability}
-            )
-            
-            from core.serializers import DateVoteSerializer
-            serializer = DateVoteSerializer(vote)
-            return True, serializer
+        vote, created = DateVote.objects.update_or_create(
+            proposed_date=proposed_date,
+            user=user,
+            defaults={'availability': availability}
+        )
         
-        except Exception as e:
-            return False, {"error": f"Failed to record vote: {str(e)}"}
+        return vote
     
     @staticmethod
-    def get_event_votes(event_id: int, user: User) -> Tuple[bool, Dict]:
+    def get_event_votes(event_id: int, user: User) -> List[Dict]:
         """
         Get all votes for an event.
         User must be owner or invitee to view votes.
@@ -74,12 +74,15 @@ class VoteService:
             user: User requesting votes.
         
         Returns:
-            Tuple of (success: bool, response_data: dict)
+            List of dicts with vote data for each proposed date.
+            
+        Raises:
+            NotFoundError: If event not found or user has no access.
         """
         event = EventService.get_event_by_id(event_id, user)
         
         if not event:
-            return False, {"error": "Event not found or you don't have access"}
+            raise NotFoundError("Event not found or you don't have access")
         
         # Get all proposed dates with their votes
         proposed_dates = event.proposed_dates.all().prefetch_related('votes', 'votes__user')
@@ -107,10 +110,10 @@ class VoteService:
             }
             result.append(date_data)
         
-        return True, result
+        return result
     
     @staticmethod
-    def get_user_votes_for_event(event_id: int, user: User) -> Tuple[bool, Dict]:
+    def get_user_votes_for_event(event_id: int, user: User) -> QuerySet[DateVote]:
         """
         Get the current user's votes for an event.
         
@@ -119,25 +122,24 @@ class VoteService:
             user: User whose votes to retrieve.
         
         Returns:
-            Tuple of (success: bool, response_data: dict)
+            QuerySet of DateVote instances.
+            
+        Raises:
+            NotFoundError: If event not found or user has no access.
         """
         event = EventService.get_event_by_id(event_id, user)
         
         if not event:
-            return False, {"error": "Event not found or you don't have access"}
+            raise NotFoundError("Event not found or you don't have access")
         
         # Get user's votes for this event
-        votes = DateVote.objects.filter(
+        return DateVote.objects.filter(
             proposed_date__event=event,
             user=user
         ).select_related('proposed_date')
-        
-        from core.serializers import DateVoteSerializer
-        serializer = DateVoteSerializer(votes, many=True)
-        return True, serializer.data
     
     @staticmethod
-    def delete_vote(event_id: int, date_id: int, user: User) -> Tuple[bool, Dict]:
+    def delete_vote(event_id: int, date_id: int, user: User) -> Dict:
         """
         Delete a user's vote for a proposed date.
         
@@ -147,29 +149,33 @@ class VoteService:
             user: User whose vote to delete.
         
         Returns:
-            Tuple of (success: bool, response_data: dict)
+            Dict with success message.
+            
+        Raises:
+            NotFoundError: If event, proposed date, or vote not found.
+            ValidationError: If event is cancelled or confirmed.
         """
         event = EventService.get_event_by_id(event_id, user)
         
         if not event:
-            return False, {"error": "Event not found or you don't have access"}
+            raise NotFoundError("Event not found or you don't have access")
         
         if event.status == Event.Status.CANCELLED:
-            return False, {"error": "Cannot modify votes on a cancelled event"}
+            raise ValidationError("Cannot modify votes on a cancelled event")
         
         if event.status == Event.Status.CONFIRMED:
-            return False, {"error": "Cannot modify votes on a confirmed event"}
+            raise ValidationError("Cannot modify votes on a confirmed event")
         
         # Check if proposed date exists
         try:
             proposed_date = ProposedDate.objects.get(id=date_id, event=event)
         except ProposedDate.DoesNotExist:
-            return False, {"error": "Proposed date not found"}
+            raise NotFoundError("Proposed date not found")
         
         # Delete the vote
         try:
             vote = DateVote.objects.get(proposed_date=proposed_date, user=user)
             vote.delete()
-            return True, {"message": "Vote deleted successfully"}
+            return {"message": "Vote deleted successfully"}
         except DateVote.DoesNotExist:
-            return False, {"error": "Vote not found"}
+            raise NotFoundError("Vote not found")
