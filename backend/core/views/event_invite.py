@@ -5,7 +5,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from core.serializers import EventInviteSerializer
+from core.serializers import EventInviteSerializer, InviteStatusUpdateSerializer
 from core.services.event_invite_service import EventInviteService
 
 
@@ -22,26 +22,26 @@ def create_invite(request):
     Returns:
         Response with created invite data or error.
     """
-    event_id = request.data.get('event')
-    invitee_id = request.data.get('invitee')
+    serializer = EventInviteSerializer(data=request.data, context={'request': request})
     
-    if not event_id or not invitee_id:
-        return Response(
-            {"error": "Event and invitee are required"},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    if not serializer.is_valid():
+        errors = serializer.errors
+        if 'event' in errors or 'invitee' in errors:
+            return Response(
+                {"error": "Event and invitee are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return Response(errors, status=status.HTTP_400_BAD_REQUEST)
     
     success, result = EventInviteService.create_invite(
-        event_id=event_id,
-        invitee_id=invitee_id,
+        event_id=serializer.validated_data['event'].id,
+        invitee_id=serializer.validated_data['invitee'].id,
         user=request.user
     )
     
     if success:
         return Response(result.data, status=status.HTTP_201_CREATED)
     else:
-        if hasattr(result, 'errors'):
-            return Response(result.errors, status=status.HTTP_400_BAD_REQUEST)
         return Response(result, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -118,28 +118,32 @@ def update_invite_status(request, invite_id):
     Returns:
         Response with updated invite data or error.
     """
-    new_status = request.data.get('status')
+    serializer = InviteStatusUpdateSerializer(data=request.data)
     
-    if not new_status:
-        return Response(
-            {"error": "Status is required"},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    if not serializer.is_valid():
+        errors = serializer.errors
+        if 'status' in errors:
+            return Response(
+                {"error": "Status is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    validated_data = serializer.validated_data
     
     success, result = EventInviteService.update_invite_status(
         invite_id=invite_id,
         user=request.user,
-        status=new_status
+        new_status=validated_data['status']
     )
     
     if success:
         return Response(result.data, status=status.HTTP_200_OK)
     else:
-        if isinstance(result, dict) and 'error' in result:
-            if result['error'] == "Invite not found":
-                return Response(result, status=status.HTTP_404_NOT_FOUND)
-            elif result['error'] == "Only the invitee can update the invite status":
-                return Response(result, status=status.HTTP_403_FORBIDDEN)
+        if result.get('error') == "Invite not found":
+            return Response(result, status=status.HTTP_404_NOT_FOUND)
+        elif result.get('error') == "Only the invitee can update the invite status":
+            return Response(result, status=status.HTTP_403_FORBIDDEN)
         return Response(result, status=status.HTTP_400_BAD_REQUEST)
 
 

@@ -6,7 +6,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from core.serializers import EventSerializer, EventCreateSerializer, EventConfirmSerializer
+from core.serializers import EventSerializer, EventCreateSerializer, EventConfirmSerializer, ProposedDateCreateSerializer
 from core.services.event_service import EventService
 
 
@@ -260,25 +260,22 @@ def add_proposed_date(request, event_id):
     Returns:
         Response with created proposed date data or error.
     """
-    date_str = request.data.get('date')
+    serializer = ProposedDateCreateSerializer(data=request.data)
     
-    if not date_str:
-        return Response(
-            {"error": "Date is required"},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    if not serializer.is_valid():
+        errors = serializer.errors
+        if 'date' in errors:
+            return Response(
+                {"error": "Date is required in YYYY-MM-DD format"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return Response(errors, status=status.HTTP_400_BAD_REQUEST)
     
-    try:
-        date_value = datetime.strptime(date_str, '%Y-%m-%d').date()
-    except ValueError:
-        return Response(
-            {"error": "Invalid date format. Use YYYY-MM-DD."},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    validated_data = serializer.validated_data
     
     success, result = EventService.add_proposed_date(
         event_id=event_id,
-        date_value=date_value,
+        date_value=validated_data['date'],
         user=request.user
     )
     

@@ -13,6 +13,19 @@ class EventService:
     """Service class for handling event business logic."""
     
     @staticmethod
+    def _get_accessible_events_filter(user: User) -> Q:
+        """
+        Get the Q filter for events accessible to a user (owned or invited).
+        
+        Args:
+            user: User to check access for.
+        
+        Returns:
+            Q object filter for accessible events.
+        """
+        return Q(user=user) | Q(invites__invitee=user)
+    
+    @staticmethod
     def create_event_proposal(
         event_name: str, 
         proposed_dates: List[datetime], 
@@ -82,7 +95,7 @@ class EventService:
             QuerySet of events.
         """
         return Event.objects.filter(
-            Q(user=user) | Q(invites__invitee=user)
+            EventService._get_accessible_events_filter(user)
         ).distinct().order_by('-created_at')
     
     @staticmethod
@@ -112,7 +125,7 @@ class EventService:
         """
         try:
             return Event.objects.filter(
-                Q(user=user) | Q(invites__invitee=user)
+                EventService._get_accessible_events_filter(user)
             ).distinct().get(id=event_id)
         except Event.DoesNotExist:
             return None
@@ -272,9 +285,9 @@ class EventService:
         Returns:
             Tuple of (success: bool, response_data: dict)
         """
-        try:
-            event = Event.objects.get(id=event_id, user=user)
-        except Event.DoesNotExist:
+        event = EventService.get_event_by_id_owner_only(event_id, user)
+        
+        if not event:
             return False, {"error": "Event not found or you are not the owner"}
         
         if event.status == Event.Status.CONFIRMED:
@@ -316,9 +329,9 @@ class EventService:
         Returns:
             Tuple of (success: bool, response_data: dict)
         """
-        try:
-            event = Event.objects.get(id=event_id, user=user)
-        except Event.DoesNotExist:
+        event = EventService.get_event_by_id_owner_only(event_id, user)
+        
+        if not event:
             return False, {"error": "Event not found or you are not the owner"}
         
         if event.status == Event.Status.CANCELLED:
@@ -356,11 +369,9 @@ class EventService:
         Returns:
             Tuple of (success: bool, response_data: dict or list)
         """
-        try:
-            event = Event.objects.filter(
-                Q(user=user) | Q(invites__invitee=user)
-            ).distinct().get(id=event_id)
-        except Event.DoesNotExist:
+        event = EventService.get_event_by_id(event_id, user)
+        
+        if not event:
             return False, {"error": "Event not found"}
         
         proposed_dates = event.proposed_dates.all()

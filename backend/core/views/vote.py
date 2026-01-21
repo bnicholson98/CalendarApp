@@ -5,6 +5,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from core.serializers import VoteCreateSerializer
 from core.services.vote_service import VoteService
 
 
@@ -23,23 +24,28 @@ def vote_on_date(request, event_id, date_id):
     Returns:
         Response with vote data or error.
     """
-    availability = request.data.get('availability')
+    serializer = VoteCreateSerializer(data=request.data)
     
-    if not availability:
-        return Response(
-            {"error": "Availability is required"},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    if not serializer.is_valid():
+        errors = serializer.errors
+        if 'availability' in errors:
+            return Response(
+                {"error": "Availability is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    validated_data = serializer.validated_data
     
     success, result = VoteService.vote_on_date(
         event_id=event_id,
         date_id=date_id,
         user=request.user,
-        availability=availability
+        availability=validated_data['availability']
     )
     
     if success:
-        return Response(result, status=status.HTTP_200_OK)
+        return Response(result.data, status=status.HTTP_200_OK)
     else:
         error = result.get('error', '')
         if error == "Event not found or you don't have access":

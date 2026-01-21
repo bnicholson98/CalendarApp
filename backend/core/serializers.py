@@ -265,3 +265,34 @@ class EventConfirmSerializer(serializers.Serializer):
             )
         
         return value
+
+
+class ProposedDateCreateSerializer(serializers.Serializer):
+    """
+    Serializer for adding a proposed date to an event.
+    """
+    date = serializers.DateField(
+        required=True,
+        format='%Y-%m-%d',
+        input_formats=['%Y-%m-%d']
+    )
+
+
+class VoteCreateSerializer(serializers.Serializer):
+    """
+    Serializer for creating/updating a vote on a proposed date.
+    """
+    availability = serializers.ChoiceField(
+        choices=DateVote.Availability.choices,
+        required=True
+    )
+
+
+class InviteStatusUpdateSerializer(serializers.Serializer):
+    """
+    Serializer for updating an invite status.
+    """
+    status = serializers.ChoiceField(
+        choices=EventInvite.Status.choices,
+        required=True
+    )

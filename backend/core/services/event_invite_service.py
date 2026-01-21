@@ -24,19 +24,34 @@ class EventInviteService:
         Returns:
             Tuple of (success: bool, response_data: dict or serializer)
         """
-        data = {
-            'event': event_id,
-            'invitee': invitee_id,
-        }
+        try:
+            event = Event.objects.get(id=event_id)
+        except Event.DoesNotExist:
+            return False, {"error": "Event not found"}
         
-        context = {'request': type('obj', (object,), {'user': user})}
-        serializer = EventInviteSerializer(data=data, context=context)
+        if event.user != user:
+            return False, {"error": "Only the event owner can create invites"}
         
-        if serializer.is_valid():
-            serializer.save()
+        if invitee_id == user.id:
+            return False, {"error": "You cannot invite yourself"}
+        
+        if EventInvite.objects.filter(event_id=event_id, invitee_id=invitee_id).exists():
+            return False, {"error": "This user has already been invited to this event"}
+        
+        try:
+            invite = EventInvite.objects.create(
+                event_id=event_id,
+                owner=user,
+                invitee_id=invitee_id,
+                status=EventInvite.Status.PENDING
+            )
+            
+            context = {'request': type('obj', (object,), {'user': user})}
+            serializer = EventInviteSerializer(invite, context=context)
             return True, serializer
         
-        return False, serializer
+        except Exception as e:
+            return False, {"error": f"Failed to create invite: {str(e)}"}
     
     @staticmethod
     def get_user_received_invites(user: User) -> List[EventInvite]:
@@ -85,7 +100,7 @@ class EventInviteService:
             return None
     
     @staticmethod
-    def update_invite_status(invite_id: int, user: User, status: str) -> Tuple[bool, Dict]:
+    def update_invite_status(invite_id: int, user: User, new_status: str) -> Tuple[bool, Dict]:
         """
         Update the status of an invite.
         Only the invitee can update the status.
@@ -93,7 +108,7 @@ class EventInviteService:
         Args:
             invite_id: ID of the invite to update.
             user: User updating the invite (must be invitee).
-            status: New status value.
+            new_status: New status value.
         
         Returns:
             Tuple of (success: bool, response_data: dict or serializer)
@@ -107,12 +122,7 @@ class EventInviteService:
         if invite.invitee != user:
             return False, {"error": "Only the invitee can update the invite status"}
         
-        # Validate status
-        valid_statuses = [choice[0] for choice in EventInvite.Status.choices]
-        if status not in valid_statuses:
-            return False, {"error": f"Invalid status. Must be one of: {', '.join(valid_statuses)}"}
-        
-        invite.status = status
+        invite.status = new_status
         invite.save()
         
         context = {'request': type('obj', (object,), {'user': user})}

@@ -4,8 +4,8 @@ Service layer for vote-related business logic.
 from typing import List, Dict, Optional, Tuple
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.db.models import Q
 from core.models import Event, ProposedDate, DateVote, EventInvite
+from core.services.event_service import EventService
 
 
 class VoteService:
@@ -31,12 +31,9 @@ class VoteService:
         Returns:
             Tuple of (success: bool, response_data: dict)
         """
-        # Check if event exists and user has access
-        try:
-            event = Event.objects.filter(
-                Q(user=user) | Q(invites__invitee=user)
-            ).distinct().get(id=event_id)
-        except Event.DoesNotExist:
+        event = EventService.get_event_by_id(event_id, user)
+        
+        if not event:
             return False, {"error": "Event not found or you don't have access"}
         
         if event.status == Event.Status.CANCELLED:
@@ -51,13 +48,6 @@ class VoteService:
         except ProposedDate.DoesNotExist:
             return False, {"error": "Proposed date not found"}
         
-        # Validate availability
-        valid_choices = [choice[0] for choice in DateVote.Availability.choices]
-        if availability not in valid_choices:
-            return False, {
-                "error": f"Invalid availability. Must be one of: {', '.join(valid_choices)}"
-            }
-        
         # Create or update vote
         try:
             vote, created = DateVote.objects.update_or_create(
@@ -68,7 +58,7 @@ class VoteService:
             
             from core.serializers import DateVoteSerializer
             serializer = DateVoteSerializer(vote)
-            return True, serializer.data
+            return True, serializer
         
         except Exception as e:
             return False, {"error": f"Failed to record vote: {str(e)}"}
@@ -86,12 +76,9 @@ class VoteService:
         Returns:
             Tuple of (success: bool, response_data: dict)
         """
-        # Check if event exists and user has access
-        try:
-            event = Event.objects.filter(
-                Q(user=user) | Q(invites__invitee=user)
-            ).distinct().get(id=event_id)
-        except Event.DoesNotExist:
+        event = EventService.get_event_by_id(event_id, user)
+        
+        if not event:
             return False, {"error": "Event not found or you don't have access"}
         
         # Get all proposed dates with their votes
@@ -134,12 +121,9 @@ class VoteService:
         Returns:
             Tuple of (success: bool, response_data: dict)
         """
-        # Check if event exists and user has access
-        try:
-            event = Event.objects.filter(
-                Q(user=user) | Q(invites__invitee=user)
-            ).distinct().get(id=event_id)
-        except Event.DoesNotExist:
+        event = EventService.get_event_by_id(event_id, user)
+        
+        if not event:
             return False, {"error": "Event not found or you don't have access"}
         
         # Get user's votes for this event
@@ -165,12 +149,9 @@ class VoteService:
         Returns:
             Tuple of (success: bool, response_data: dict)
         """
-        # Check if event exists and user has access
-        try:
-            event = Event.objects.filter(
-                Q(user=user) | Q(invites__invitee=user)
-            ).distinct().get(id=event_id)
-        except Event.DoesNotExist:
+        event = EventService.get_event_by_id(event_id, user)
+        
+        if not event:
             return False, {"error": "Event not found or you don't have access"}
         
         if event.status == Event.Status.CANCELLED:
