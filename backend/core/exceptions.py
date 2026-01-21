@@ -1,10 +1,6 @@
 """
-Custom exceptions for the Calendar API.
-
-These exceptions are raised by services and caught by views
-to translate into appropriate HTTP responses.
+Custom exceptions.
 """
-
 
 class ServiceException(Exception):
     """Base exception for service layer errors."""
