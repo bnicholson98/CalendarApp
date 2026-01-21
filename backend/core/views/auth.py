@@ -8,7 +8,7 @@ from rest_framework.authentication import TokenAuthentication
 
 from core.serializers import UserRegistrationSerializer, LoginSerializer
 from core.services.auth_service import AuthService
-from core.exceptions import ValidationError
+from core.exceptions import ValidationError, ExistingUserError
 
 
 @api_view(["POST"])
@@ -25,13 +25,7 @@ def register_user(request):
     serializer = UserRegistrationSerializer(data=request.data)
     
     if not serializer.is_valid():
-        errors = serializer.errors
-        if 'username' in errors or 'password' in errors:
-            return Response(
-                {"error": "All fields are required"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     validated_data = serializer.validated_data
     
@@ -41,7 +35,7 @@ def register_user(request):
             password=validated_data['password']
         )
         return Response(response_data, status=status.HTTP_201_CREATED)
-    except ValidationError as e:
+    except (ValidationError, ExistingUserError) as e:
         return Response({"error": e.message}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -59,10 +53,7 @@ def login_user(request):
     serializer = LoginSerializer(data=request.data)
     
     if not serializer.is_valid():
-        return Response(
-            {"error": "Invalid credentials"}, 
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     validated_data = serializer.validated_data
     

@@ -37,3 +37,9 @@ class ConflictError(ServiceException):
     
     def __init__(self, message: str = "Conflict"):
         super().__init__(message, code='conflict')
+
+class ExistingUserError(ServiceException):
+    """Raised when attempting to create a user that already exists."""
+    
+    def __init__(self, message: str = "User already exists"):
+        super().__init__(message, code='existing_user')

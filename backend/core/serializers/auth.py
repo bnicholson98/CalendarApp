@@ -16,16 +16,6 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'username', 'password']
         read_only_fields = ['id']
-    
-    def create(self, validated_data):
-        """
-        Create a new user with encrypted password.
-        """
-        user = User.objects.create_user(
-            username=validated_data['username'],
-            password=validated_data['password']
-        )
-        return user
 
 
 class LoginSerializer(serializers.Serializer):

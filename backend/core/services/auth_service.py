@@ -6,7 +6,7 @@ from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
 from typing import Optional, Dict
 
-from core.exceptions import ValidationError, NotFoundError
+from core.exceptions import ValidationError, ExistingUserError
 
 
 class AuthService:
@@ -25,10 +25,11 @@ class AuthService:
             Dict with success message.
             
         Raises:
-            ValidationError: If user already exists or creation fails.
+            ExistingUserError: If user already exists.
+            ValidationError: If creation fails.
         """
         if User.objects.filter(username=username).exists():
-            raise ValidationError("User already exists")
+            raise ExistingUserError("User already exists")
         
         try:
             User.objects.create_user(username=username, password=password)
