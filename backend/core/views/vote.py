@@ -29,13 +29,7 @@ def vote_on_date(request, event_id, date_id):
     serializer = VoteCreateSerializer(data=request.data)
     
     if not serializer.is_valid():
-        errors = serializer.errors
-        if 'availability' in errors:
-            return Response(
-                {"error": "Availability is required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     validated_data = serializer.validated_data
     
