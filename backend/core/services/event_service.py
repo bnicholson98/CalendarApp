@@ -51,7 +51,6 @@ class EventService:
         """
         try:
             with transaction.atomic():
-                # Create the event
                 event = Event.objects.create(
                     event_name=event_name,
                     user=user,
@@ -175,9 +174,6 @@ class EventService:
         if not event:
             raise NotFoundError("Event not found")
         
-        if not event_name or not event_name.strip():
-            raise ValidationError("Event name cannot be empty")
-        
         event.event_name = event_name.strip()
         event.save()
         
@@ -208,13 +204,13 @@ class EventService:
         return {"message": "Event deleted successfully"}
     
     @staticmethod
-    def confirm_event(event_id: int, user: User, proposed_date_id: int) -> Event:
+    def confirm_event(event: Event, user: User, proposed_date_id: int) -> Event:
         """
         Confirm an event with a specific proposed date.
         Only the owner can confirm.
         
         Args:
-            event_id: ID of the event to confirm.
+            event: Event instance to confirm.
             user: User who owns the event.
             proposed_date_id: ID of the proposed date to confirm.
         
@@ -222,24 +218,12 @@ class EventService:
             Updated Event instance.
             
         Raises:
-            NotFoundError: If event or proposed date not found.
-            ValidationError: If event is already confirmed or cancelled.
-        """
-        event = EventService.get_event_by_id_owner_only(event_id, user)
-        
-        if not event:
-            raise NotFoundError("Event not found")
-        
-        if event.status == Event.Status.CONFIRMED:
-            raise ValidationError("Event is already confirmed")
-        
-        if event.status == Event.Status.CANCELLED:
-            raise ValidationError("Cannot confirm a cancelled event")
-        
+            NotFoundError: If proposed date not found.
+        """              
         try:
             proposed_date = ProposedDate.objects.get(id=proposed_date_id, event=event)
         except ProposedDate.DoesNotExist:
-            raise ValidationError("Proposed date not found or does not belong to this event")
+            raise NotFoundError("Proposed date not found or does not belong to this event")
         
         event.status = Event.Status.CONFIRMED
         event.confirmed_date = proposed_date

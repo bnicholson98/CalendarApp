@@ -34,13 +34,7 @@ def create_event(request):
     serializer = EventCreateSerializer(data=request.data, context={'request': request})
     
     if not serializer.is_valid():
-        errors = serializer.errors
-        if 'proposed_dates' in errors or 'event_name' in errors:
-            return Response(
-                {"error": "Event name and proposed dates are required"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     validated_data = serializer.validated_data
     
@@ -112,27 +106,23 @@ def update_event(request, event_id):
     Returns:
         Response with updated event data or error.
     """
-    input_serializer = EventUpdateSerializer(data=request.data)
+    serializer = EventUpdateSerializer(data=request.data)
     
-    if not input_serializer.is_valid():
-        return Response(input_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    try:
-        event_name = input_serializer.validated_data.get('event_name')
-        if event_name is None:
-            event_name = request.data.get('event_name', '')
-        
-        event = EventService.update_event(
+    validated_data = serializer.validated_data
+    
+    try:      
+        response_data = EventService.update_event(
             event_id=event_id,
             user=request.user,
-            event_name=event_name
+            event_name=validated_data.get('event_name')
         )
-        output_serializer = EventSerializer(event)
+        output_serializer = EventSerializer(response_data)
         return Response(output_serializer.data, status=status.HTTP_200_OK)
     except NotFoundError as e:
         return Response({"error": e.message}, status=status.HTTP_404_NOT_FOUND)
-    except ValidationError as e:
-        return Response({"error": e.message}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['DELETE'])
@@ -182,22 +172,22 @@ def confirm_event(request, event_id):
         data=request.data, 
         context={'request': request, 'event': event}
     )
-    
+
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
+    validated_data = serializer.validated_data
+    
     try:
-        event = EventService.confirm_event(
-            event_id=event_id,
+        response_data = EventService.confirm_event(
+            event=event,
             user=request.user,
-            proposed_date_id=serializer.validated_data['proposed_date_id']
+            proposed_date_id=validated_data['proposed_date_id']
         )
-        output_serializer = EventSerializer(event)
+        output_serializer = EventSerializer(response_data)
         return Response(output_serializer.data, status=status.HTTP_200_OK)
     except NotFoundError as e:
         return Response({"error": e.message}, status=status.HTTP_404_NOT_FOUND)
-    except ValidationError as e:
-        return Response({"error": e.message}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['POST'])
@@ -263,13 +253,7 @@ def add_proposed_date(request, event_id):
     serializer = ProposedDateCreateSerializer(data=request.data)
     
     if not serializer.is_valid():
-        errors = serializer.errors
-        if 'date' in errors:
-            return Response(
-                {"error": "Date is required in YYYY-MM-DD format"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     validated_data = serializer.validated_data
     

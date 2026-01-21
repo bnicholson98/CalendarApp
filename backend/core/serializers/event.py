@@ -108,7 +108,7 @@ class EventCreateSerializer(serializers.Serializer):
                 f"Users with IDs {list(invalid_ids)} do not exist."
             )
         
-        return list(set(value))  # Remove duplicates
+        return list(set(value)) 
     
     def validate(self, data):
         """
@@ -156,6 +156,12 @@ class EventConfirmSerializer(serializers.Serializer):
         if not event:
             raise serializers.ValidationError("Event context is required.")
         
+        if event.status == Event.Status.CONFIRMED:
+            raise serializers.ValidationError("Event is already confirmed")
+        
+        if event.status == Event.Status.CANCELLED:
+            raise serializers.ValidationError("Cannot confirm a cancelled event")
+
         try:
             ProposedDate.objects.get(id=value, event=event)
         except ProposedDate.DoesNotExist:
