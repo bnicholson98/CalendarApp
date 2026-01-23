@@ -22,6 +22,7 @@ const Register = ({ onRegister }) => {
         });
         if (loginResponse.status === 200) {
           localStorage.setItem("token", loginResponse.data.token);
+          localStorage.setItem("userId", loginResponse.data.userId);
           localStorage.setItem("userName", loginResponse.data.userName);
           onRegister(); // Update parent state
           navigate("/home"); // Navigate to home page

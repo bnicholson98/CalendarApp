@@ -1,6 +1,6 @@
 # CalendarApp
 
-A full-stack calendar application for managing events, invites, and voting on event proposals.
+A calendar application for managing events, invites, and voting on event proposals.
 
 ## Features
 

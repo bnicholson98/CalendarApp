@@ -58,6 +58,7 @@ class AuthService:
             token, _ = Token.objects.get_or_create(user=user)
             return {
                 "token": token.key,
+                "userId": user.id,
                 "userName": username
             }
         

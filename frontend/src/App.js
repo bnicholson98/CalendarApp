@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import Login from './components/Login';
 import Register from './components/Register';
 import Home from './components/Home';
-import Calendar from "./components/Calendar";
+import CreateEvent from "./components/CreateEvent";
 
 function App() {
 	const [authenticated, setAuthenticated] = useState(false);
@@ -28,7 +28,7 @@ function App() {
 				<Route path="/register" element={authenticated ? (<Navigate to="/home" />) : (<Register onRegister={handleRegister} />)}/>
 				<Route path="/home" element={authenticated ? (<Home onLogout={handleLogout} />) : (<Navigate to="/login" />)}/>
 				<Route path="/" element={<Navigate to="/login" />} />
-				<Route path="/create-event" element={authenticated ? (<Calendar />) : (<Navigate to="/login" />)} />
+				<Route path="/create-event" element={authenticated ? (<CreateEvent />) : (<Navigate to="/login" />)} />
 			</Routes>
 		</Router>
 	);
