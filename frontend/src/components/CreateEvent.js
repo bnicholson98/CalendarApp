@@ -8,6 +8,7 @@ const CreateEvent = () => {
     const [eventName, setEventName] = useState("");
     const [selectedDates, setSelectedDates] = useState([]);
     const [inviteesInput, setInviteesInput] = useState("");
+    const [inviteeWarnings, setInviteeWarnings] = useState([]);
     const navigate = useNavigate();
 
     const handleDateChange = (date) => {
@@ -38,17 +39,24 @@ const CreateEvent = () => {
     const parseInvitees = () => {
         if (!inviteesInput.trim()) return [];
 
-        const ids = inviteesInput
+        const usernames = inviteesInput
             .split(",")
-            .map((id) => id.trim())
-            .filter((id) => id !== "")
-            .map((id) => parseInt(id, 10))
-            .filter((id) => !isNaN(id));
+            .map((name) => name.trim())
+            .filter((name) => name !== "");
 
-        return [...new Set(ids)]; // Remove duplicates
+        return [...new Set(usernames)]; // Remove duplicates
+    };
+
+    const handleInviteesChange = (e) => {
+        setInviteesInput(e.target.value);
+        // Clear any previous warnings when the user edits the field
+        setInviteeWarnings([]);
     };
 
     const handleSubmit = async () => {
+        // Clear previous warnings before every submission attempt
+        setInviteeWarnings([]);
+
         if (!eventName.trim()) {
             alert("Event name is required.");
             return;
@@ -64,8 +72,14 @@ const CreateEvent = () => {
             // Format dates as 'YYYY-MM-DD' strings
             const formattedDates = selectedDates.map(date => date.toISOString().split('T')[0]);
 
-            await createEvent(eventName, formattedDates, invitees);
-            navigate("/home");
+            const responseData = await createEvent(eventName, formattedDates, invitees);
+
+            // Surface any invitee warnings the backend returned without blocking navigation
+            if (responseData.warnings && responseData.warnings.length > 0) {
+                setInviteeWarnings(responseData.warnings);
+            } else {
+                navigate("/home");
+            }
         } catch (error) {
             console.error("Error during event creation:", error);
             alert("An error occurred during event creation. Please try again.");
@@ -153,13 +167,47 @@ const CreateEvent = () => {
                 <input
                     type="text"
                     value={inviteesInput}
-                    onChange={(e) => setInviteesInput(e.target.value)}
-                    placeholder="Enter user IDs separated by commas (e.g., 2, 3, 5)"
+                    onChange={handleInviteesChange}
+                    placeholder="Enter usernames separated by commas (e.g., Alice, Bob)"
                     style={{ padding: "8px", fontSize: "16px", width: "300px" }}
                 />
                 <p style={{ margin: "5px 0 0 0", fontSize: "14px", color: "#666" }}>
-                    Enter the user IDs of people you want to invite
+                    Enter the usernames of people you want to invite
                 </p>
+
+                {inviteeWarnings.length > 0 && (
+                    <div style={{
+                        marginTop: "10px",
+                        padding: "10px 14px",
+                        backgroundColor: "#fff3cd",
+                        border: "1px solid #ffc107",
+                        borderRadius: "4px",
+                        color: "#856404",
+                    }}>
+                        <strong>⚠️ Invitee warnings — the event was created but some invites were skipped:</strong>
+                        <ul style={{ margin: "8px 0 0 0", paddingLeft: "20px" }}>
+                            {inviteeWarnings.map((warning, idx) => (
+                                <li key={idx} style={{ marginBottom: "4px" }}>
+                                    {warning.message}
+                                </li>
+                            ))}
+                        </ul>
+                        <button
+                            onClick={() => navigate("/home")}
+                            style={{
+                                marginTop: "8px",
+                                padding: "6px 14px",
+                                backgroundColor: "#007bff",
+                                color: "white",
+                                border: "none",
+                                borderRadius: "4px",
+                                cursor: "pointer",
+                            }}
+                        >
+                            Go to Home
+                        </button>
+                    </div>
+                )}
             </div>
 
             <div>

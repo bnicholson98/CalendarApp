@@ -82,7 +82,7 @@ class EventService:
                     
                     EventInvite.objects.bulk_create(invite_instances)
                 
-                return {"event_id": event.id, "message": "Event proposal created successfully"}
+                return {"event_id": event.id, "event_name": event.event_name, "message": "Event proposal created successfully"}
         
         except Exception as e:
             raise ValidationError(f"Failed to create event proposal: {str(e)}")

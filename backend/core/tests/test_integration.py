@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework.test import APIClient, APITestCase
 from rest_framework import status
-from core.models import Event, ProposedDate
+from core.models import Event, EventInvite, ProposedDate
 
 
 class UserJourneyIntegrationTests(APITestCase):
@@ -105,7 +105,7 @@ class EventProposalIntegrationTests(APITestCase):
                 self.tomorrow.strftime('%Y-%m-%d'),
                 self.day_after.strftime('%Y-%m-%d')
             ],
-            'invitees': [self.invitee1.id, self.invitee2.id]
+            'invitees': [self.invitee1.username, self.invitee2.username]
         }
         
         create_response = self.api_client.post(
@@ -172,3 +172,92 @@ class EventProposalIntegrationTests(APITestCase):
         event.refresh_from_db()
         self.assertEqual(event.status, Event.Status.CONFIRMED)
         self.assertEqual(event.confirmed_date.id, proposed_dates[1].id)
+
+    def test_create_event_self_invite_warning(self):
+        """Owner's own username in invitees is silently dropped; event still created with remaining invitees."""
+        owner_login = self.api_client.post(
+            self.login_url,
+            {'username': 'owner', 'password': 'ownerpass'},
+            format='json'
+        )
+        owner_token = owner_login.json()['token']
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {owner_token}')
+
+        event_data = {
+            'event_name': 'Self Invite Test',
+            'proposed_dates': [self.today.strftime('%Y-%m-%d')],
+            'invitees': ['owner', 'invitee1'],  # owner included deliberately
+        }
+
+        resp = self.api_client.post(self.create_event_url, event_data, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+        event = Event.objects.get(id=resp.data['event_id'])
+        # Only invitee1 should have received an invite; owner was dropped
+        self.assertEqual(event.invites.count(), 1)
+        self.assertEqual(event.invites.first().invitee.username, 'invitee1')
+
+        # Response must contain a self_invited warning
+        warnings = resp.data.get('warnings', [])
+        self.assertEqual(len(warnings), 1)
+        self.assertEqual(warnings[0]['type'], 'self_invited')
+
+    def test_create_event_unknown_username_warning(self):
+        """Unknown usernames are silently dropped; event still created with valid invitees."""
+        owner_login = self.api_client.post(
+            self.login_url,
+            {'username': 'owner', 'password': 'ownerpass'},
+            format='json'
+        )
+        owner_token = owner_login.json()['token']
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {owner_token}')
+
+        event_data = {
+            'event_name': 'Unknown Invite Test',
+            'proposed_dates': [self.today.strftime('%Y-%m-%d')],
+            'invitees': ['invitee1', 'ghost_user', 'nobody'],
+        }
+
+        resp = self.api_client.post(self.create_event_url, event_data, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+        event = Event.objects.get(id=resp.data['event_id'])
+        # Only invitee1 resolved; the other two do not exist
+        self.assertEqual(event.invites.count(), 1)
+        self.assertEqual(event.invites.first().invitee.username, 'invitee1')
+
+        # Response must contain an unknown_usernames warning listing both bad names
+        warnings = resp.data.get('warnings', [])
+        self.assertEqual(len(warnings), 1)
+        self.assertEqual(warnings[0]['type'], 'unknown_usernames')
+        self.assertIn('ghost_user', warnings[0]['message'])
+        self.assertIn('nobody', warnings[0]['message'])
+
+    def test_create_event_both_warnings(self):
+        """Both self-invite and unknown usernames produce two warnings; valid invitees still work."""
+        owner_login = self.api_client.post(
+            self.login_url,
+            {'username': 'owner', 'password': 'ownerpass'},
+            format='json'
+        )
+        owner_token = owner_login.json()['token']
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {owner_token}')
+
+        event_data = {
+            'event_name': 'Both Warnings Test',
+            'proposed_dates': [self.today.strftime('%Y-%m-%d')],
+            'invitees': ['owner', 'invitee2', 'phantom'],
+        }
+
+        resp = self.api_client.post(self.create_event_url, event_data, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+        event = Event.objects.get(id=resp.data['event_id'])
+        # Only invitee2 should have an invite
+        self.assertEqual(event.invites.count(), 1)
+        self.assertEqual(event.invites.first().invitee.username, 'invitee2')
+
+        warnings = resp.data.get('warnings', [])
+        warning_types = {w['type'] for w in warnings}
+        self.assertIn('unknown_usernames', warning_types)
+        self.assertIn('self_invited', warning_types)

@@ -4,6 +4,7 @@ import Login from './components/Login';
 import Register from './components/Register';
 import Home from './components/Home';
 import CreateEvent from "./components/CreateEvent";
+import EventDetails from "./components/EventDetails";
 
 function App() {
 	const [authenticated, setAuthenticated] = useState(false);
@@ -29,6 +30,7 @@ function App() {
 				<Route path="/home" element={authenticated ? (<Home onLogout={handleLogout} />) : (<Navigate to="/login" />)}/>
 				<Route path="/" element={<Navigate to="/login" />} />
 				<Route path="/create-event" element={authenticated ? (<CreateEvent />) : (<Navigate to="/login" />)} />
+				<Route path="/event-details/:eventId" element={authenticated ? (<EventDetails />) : (<Navigate to="/login" />)} />
 			</Routes>
 		</Router>
 	);

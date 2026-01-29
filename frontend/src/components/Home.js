@@ -24,9 +24,11 @@ const Home = ({ onLogout }) => {
                     eventsById[event.id] = event;
                 });
 
-                // Filter events by ownership using stored userId
+                // Filter events by ownership, excluding cancelled ones
                 const userId = parseInt(localStorage.getItem("userId"), 10);
-                const ownedEvents = events.filter(event => event.user === userId);
+                const ownedEvents = events.filter(
+                    event => event.user === userId && event.status !== "CANCELLED"
+                );
                 setMyEvents(ownedEvents);
 
                 // Enrich invites with event details
@@ -138,7 +140,11 @@ const Home = ({ onLogout }) => {
                 ) : (
                     <ul style={{ padding: 0 }}>
                         {myEvents.map((event) => (
-                            <li key={event.id} style={{ ...listItemStyle, border: "1px solid #ccc" }}>
+                            <li
+                                key={event.id}
+                                style={{ ...listItemStyle, border: "1px solid #ccc", cursor: "pointer" }}
+                                onClick={() => navigate(`/event-details/${event.id}`)}
+                            >
                                 <strong>{event.event_name}</strong>
                                 <span style={{ marginLeft: "10px", ...getEventStatusStyle(event.status) }}>
                                     ({event.status})

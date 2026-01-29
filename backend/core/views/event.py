@@ -29,7 +29,7 @@ def create_event(request):
                 User must be authenticated.
     
     Returns:
-        Response with success message and event_id or error.
+        Response with success message, event_id, and optional warnings or error.
     """
     serializer = EventCreateSerializer(data=request.data, context={'request': request})
     
@@ -45,6 +45,28 @@ def create_event(request):
             user=request.user,
             invitees=validated_data.get('invitees', [])
         )
+
+        warnings = []
+        skipped_unknown = getattr(serializer, '_skipped_unknown', [])
+        skipped_self = getattr(serializer, '_skipped_self', [])
+
+        if skipped_unknown:
+            warnings.append({
+                "type": "unknown_usernames",
+                "message": (
+                    f"{len(skipped_unknown)} invitee username(s) were not recognised "
+                    f"and were skipped: {skipped_unknown}."
+                ),
+            })
+        if skipped_self:
+            warnings.append({
+                "type": "self_invited",
+                "message": "You cannot invite yourself. Your username was removed from the invitee list.",
+            })
+
+        if warnings:
+            response_data["warnings"] = warnings
+
         return Response(response_data, status=status.HTTP_201_CREATED)
     except ValidationError as e:
         return Response({"error": e.message}, status=status.HTTP_400_BAD_REQUEST)

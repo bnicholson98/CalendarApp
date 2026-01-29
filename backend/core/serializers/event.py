@@ -64,7 +64,7 @@ class EventCreateSerializer(serializers.Serializer):
         allow_empty=False
     )
     invitees = serializers.ListField(
-        child=serializers.IntegerField(),
+        child=serializers.CharField(),
         required=False,
         default=list
     )
@@ -97,32 +97,46 @@ class EventCreateSerializer(serializers.Serializer):
         """
         Validate invitees list - ensure all user IDs exist.
         """
+        # Initialise warning accumulators so they always exist
+        self._skipped_unknown = []
+        self._skipped_self = []
+
         if not value:
             return value
-        
-        existing_users = User.objects.filter(id__in=value).values_list('id', flat=True)
-        invalid_ids = set(value) - set(existing_users)
-        
-        if invalid_ids:
-            raise serializers.ValidationError(
-                f"Users with IDs {list(invalid_ids)} do not exist."
-            )
-        
-        return list(set(value)) 
-    
+
+        usernames = list(dict.fromkeys(
+            username.strip() for username in value if username.strip()
+        ))
+
+        if not usernames:
+            return []
+
+        existing_users = User.objects.filter(
+            username__in=usernames
+        ).values_list('username', 'id')
+        found = {username: uid for username, uid in existing_users}
+
+        self._skipped_unknown = [name for name in usernames if name not in found]
+
+        return [found[name] for name in usernames if name in found]
+
     def validate(self, data):
         """
         Cross-field validation.
         """
+        # Ensure warning lists exist even if validate_invitees was not called
+        if not hasattr(self, '_skipped_unknown'):
+            self._skipped_unknown = []
+        if not hasattr(self, '_skipped_self'):
+            self._skipped_self = []
+
         request = self.context.get('request')
         invitees = data.get('invitees', [])
-        
-        # Ensure owner is not in invitees list
+
         if request and request.user.id in invitees:
-            raise serializers.ValidationError(
-                {"invitees": "You cannot invite yourself."}
-            )
-        
+            self._skipped_self = [request.user.username]
+            data['invitees'] = [uid for uid in invitees if uid != request.user.id]
+
         return data
 
 
