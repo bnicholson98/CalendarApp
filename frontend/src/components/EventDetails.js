@@ -25,6 +25,9 @@ const EventDetails = () => {
 
     // Confirmation flow state
     const [confirmingDateId, setConfirmingDateId] = useState(null);
+    // Collapse state for lists
+    const [proposedDatesCollapsed, setProposedDatesCollapsed] = useState(false);
+    const [confirmDatesCollapsed, setConfirmDatesCollapsed] = useState(false);
 
     const loadEvent = async () => {
         try {
@@ -186,10 +189,19 @@ const EventDetails = () => {
 
             {/* Proposed dates */}
             <section style={{ marginBottom: "24px" }}>
-                <h3>Proposed Dates</h3>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <h3 style={{ margin: 0 }}>Proposed Dates</h3>
+                <button
+                    onClick={() => setProposedDatesCollapsed((s) => !s)}
+                    aria-expanded={!proposedDatesCollapsed}
+                    style={{ padding: '6px 10px', cursor: 'pointer' }}
+                >
+                    {proposedDatesCollapsed ? 'Expand' : 'Collapse'}
+                </button>
+            </div>
                 {event.proposed_dates.length === 0 ? (
                     <p style={{ color: "#666" }}>No proposed dates yet.</p>
-                ) : (
+                ) : !proposedDatesCollapsed ? (
                     <ul style={{ padding: 0, listStyle: "none" }}>
                         {event.proposed_dates.map((pd) => {
                             const isConfirmedDate =
@@ -263,6 +275,8 @@ const EventDetails = () => {
                             );
                         })}
                     </ul>
+                ) : (
+                    <p style={{ color: '#666' }}>{event.proposed_dates.length} proposed date(s) — collapsed.</p>
                 )}
 
                 {/* Add date — owner only, proposed status */}
@@ -354,25 +368,30 @@ const EventDetails = () => {
                                 borderRadius: "4px",
                                 marginBottom: "12px",
                             }}>
-                                <p style={{ margin: "0 0 10px 0", fontWeight: "bold" }}>
-                                    Select the date to confirm:
-                                </p>
-                                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                                    {event.proposed_dates.map((pd) => (
-                                        <label
-                                            key={pd.id}
-                                            style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}
-                                        >
-                                            <input
-                                                type="radio"
-                                                name="confirm-date"
-                                                checked={confirmingDateId === pd.id}
-                                                onChange={() => setConfirmingDateId(pd.id)}
-                                            />
-                                            {new Date(pd.date + "T00:00:00").toLocaleDateString()}
-                                        </label>
-                                    ))}
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <p style={{ margin: 0, fontWeight: 'bold' }}>Select the date to confirm:</p>
+                                    <button onClick={() => setConfirmDatesCollapsed((s) => !s)} style={{ padding: '4px 8px', cursor: 'pointer' }} aria-expanded={!confirmDatesCollapsed}>
+                                        {confirmDatesCollapsed ? 'Expand' : 'Collapse'}
+                                    </button>
                                 </div>
+                                {!confirmDatesCollapsed && (
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                                        {event.proposed_dates.map((pd) => (
+                                            <label
+                                                key={pd.id}
+                                                style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}
+                                            >
+                                                <input
+                                                    type="radio"
+                                                    name="confirm-date"
+                                                    checked={confirmingDateId === pd.id}
+                                                    onChange={() => setConfirmingDateId(pd.id)}
+                                                />
+                                                {new Date(pd.date + "T00:00:00").toLocaleDateString()}
+                                            </label>
+                                        ))}
+                                    </div>
+                                )}
                                 <div style={{ marginTop: "10px", display: "flex", gap: "8px" }}>
                                     <button
                                         onClick={handleConfirm}

@@ -15,6 +15,8 @@ const DateVoting = ({ eventId, proposedDates, onVoteChange }) => {
     // Map: proposed_date id  →  current availability string (or null when no vote)
     const [myVotes, setMyVotes] = useState({});
     const [loading, setLoading] = useState(true);
+    // Collapse state for the voting list
+    const [collapsed, setCollapsed] = useState(false);
 
     const loadMyVotes = async () => {
         try {
@@ -73,68 +75,78 @@ const DateVoting = ({ eventId, proposedDates, onVoteChange }) => {
 
     return (
         <section style={{ marginBottom: "24px" }}>
-            <h3>Your Availability</h3>
-            <ul style={{ padding: 0, listStyle: "none" }}>
-                {proposedDates.map((pd) => {
-                    const current = myVotes[pd.id] || null;
-                    return (
-                        <li
-                            key={pd.id}
-                            style={{
-                                padding: "10px 14px",
-                                marginBottom: "8px",
-                                border: "1px solid #ccc",
-                                borderRadius: "4px",
-                            }}
-                        >
-                            <div style={{ marginBottom: "8px", fontWeight: "bold" }}>
-                                {new Date(pd.date + "T00:00:00").toLocaleDateString()}
-                            </div>
-                            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                                {OPTIONS.map((opt) => {
-                                    const isSelected = current === opt.value;
-                                    return (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <h3 style={{ margin: 0 }}>Your Availability</h3>
+                <button onClick={() => setCollapsed((s) => !s)} aria-expanded={!collapsed} style={{ padding: '6px 10px', cursor: 'pointer' }}>
+                    {collapsed ? 'Expand' : 'Collapse'}
+                </button>
+            </div>
+
+            {!collapsed ? (
+                <ul style={{ padding: 0, listStyle: "none" }}>
+                    {proposedDates.map((pd) => {
+                        const current = myVotes[pd.id] || null;
+                        return (
+                            <li
+                                key={pd.id}
+                                style={{
+                                    padding: "10px 14px",
+                                    marginBottom: "8px",
+                                    border: "1px solid #ccc",
+                                    borderRadius: "4px",
+                                }}
+                            >
+                                <div style={{ marginBottom: "8px", fontWeight: "bold" }}>
+                                    {new Date(pd.date + "T00:00:00").toLocaleDateString()}
+                                </div>
+                                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                                    {OPTIONS.map((opt) => {
+                                        const isSelected = current === opt.value;
+                                        return (
+                                            <button
+                                                key={opt.value}
+                                                onClick={() => handleVote(pd.id, opt.value)}
+                                                style={{
+                                                    padding: "5px 12px",
+                                                    border: isSelected
+                                                        ? `2px solid ${opt.color}`
+                                                        : "1px solid #ccc",
+                                                    borderRadius: "4px",
+                                                    backgroundColor: isSelected ? opt.color : "transparent",
+                                                    color: isSelected ? "white" : "#333",
+                                                    fontWeight: isSelected ? "bold" : "normal",
+                                                    cursor: "pointer",
+                                                    transition: "all 0.15s ease",
+                                                }}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        );
+                                    })}
+                                    {current && (
                                         <button
-                                            key={opt.value}
-                                            onClick={() => handleVote(pd.id, opt.value)}
+                                            onClick={() => handleClear(pd.id)}
                                             style={{
-                                                padding: "5px 12px",
-                                                border: isSelected
-                                                    ? `2px solid ${opt.color}`
-                                                    : "1px solid #ccc",
+                                                padding: "5px 10px",
+                                                border: "1px solid #999",
                                                 borderRadius: "4px",
-                                                backgroundColor: isSelected ? opt.color : "transparent",
-                                                color: isSelected ? "white" : "#333",
-                                                fontWeight: isSelected ? "bold" : "normal",
+                                                backgroundColor: "transparent",
+                                                color: "#666",
+                                                fontSize: "12px",
                                                 cursor: "pointer",
-                                                transition: "all 0.15s ease",
                                             }}
                                         >
-                                            {opt.label}
+                                            Clear
                                         </button>
-                                    );
-                                })}
-                                {current && (
-                                    <button
-                                        onClick={() => handleClear(pd.id)}
-                                        style={{
-                                            padding: "5px 10px",
-                                            border: "1px solid #999",
-                                            borderRadius: "4px",
-                                            backgroundColor: "transparent",
-                                            color: "#666",
-                                            fontSize: "12px",
-                                            cursor: "pointer",
-                                        }}
-                                    >
-                                        Clear
-                                    </button>
-                                )}
-                            </div>
-                        </li>
-                    );
-                })}
-            </ul>
+                                    )}
+                                </div>
+                            </li>
+                        );
+                    })}
+                </ul>
+            ) : (
+                <p style={{ color: '#666' }}>{proposedDates.length} date(s) — collapsed.</p>
+            )}
         </section>
     );
 };

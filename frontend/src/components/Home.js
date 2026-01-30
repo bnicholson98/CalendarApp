@@ -124,25 +124,6 @@ const Home = ({ onLogout }) => {
         }
     };
 
-    const getInviteStatusStyle = (status) => {
-        switch (status) {
-            case "PENDING":
-                return {
-                    backgroundColor: "#fff3cd",
-                    border: "2px solid #ffc107",
-                    fontWeight: "bold",
-                };
-            case "ACCEPTED":
-                return { backgroundColor: "#d4edda", border: "1px solid #28a745" };
-            case "DECLINED":
-                return { backgroundColor: "#f8d7da", border: "1px solid #dc3545" };
-            case "MAYBE":
-                return { backgroundColor: "#e2e3e5", border: "1px solid #6c757d" };
-            default:
-                return {};
-        }
-    };
-
     const listItemStyle = {
         padding: "10px",
         marginBottom: "8px",
@@ -192,7 +173,7 @@ const Home = ({ onLogout }) => {
                         {invitedEvents.map((invite) => (
                             <li
                                 key={invite.id}
-                                style={{ ...listItemStyle, ...getInviteStatusStyle(invite.status), cursor: invite.eventDetails ? "pointer" : "default" }}
+                                style={{ ...listItemStyle, cursor: invite.eventDetails ? "pointer" : "default" }}
                                 onClick={() => invite.eventDetails && navigate(`/event-details/${invite.eventDetails.id}`)}
                             >
                                 <strong>
@@ -203,8 +184,7 @@ const Home = ({ onLogout }) => {
                                         ({invite.eventDetails.status})
                                     </span>
                                 )}
-                                {invite.status === "PENDING"
-                                    && (!invite.eventDetails || invite.myVoteCount < invite.eventDetails.proposed_dates.length)
+                                {(!invite.eventDetails || invite.myVoteCount < invite.eventDetails?.proposed_dates.length)
                                     && (
                                         <span style={{ marginLeft: "10px" }}>
                                             ⚠️ Action Required

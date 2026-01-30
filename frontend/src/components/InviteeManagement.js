@@ -15,6 +15,7 @@ const InviteeManagement = ({ eventId, proposedDates, onInviteeChange }) => {
     const [votesByUser, setVotesByUser] = useState({});
     const [loading, setLoading] = useState(true);
     const [newUsername, setNewUsername] = useState("");
+    const [collapsed, setCollapsed] = useState(false);
 
     const loadData = async () => {
         try {
@@ -75,21 +76,6 @@ const InviteeManagement = ({ eventId, proposedDates, onInviteeChange }) => {
 
     // ── rendering helpers ──────────────────────────────────────────────────────
 
-    const getInviteStatusBadgeStyle = (status) => {
-        switch (status) {
-            case "PENDING":
-                return { backgroundColor: "#fff3cd", color: "#856404" };
-            case "ACCEPTED":
-                return { backgroundColor: "#d4edda", color: "#155724" };
-            case "DECLINED":
-                return { backgroundColor: "#f8d7da", color: "#721c24" };
-            case "MAYBE":
-                return { backgroundColor: "#e2e3e5", color: "#383d41" };
-            default:
-                return { backgroundColor: "#e2e3e5", color: "#383d41" };
-        }
-    };
-
     const getVoteBadgeStyle = (label) => {
         switch (label) {
             case "available":
@@ -117,11 +103,16 @@ const InviteeManagement = ({ eventId, proposedDates, onInviteeChange }) => {
 
     return (
         <section style={{ marginBottom: "24px" }}>
-            <h3>Invitees</h3>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <h3 style={{ margin: 0 }}>Invitees</h3>
+                <button onClick={() => setCollapsed((s) => !s)} aria-expanded={!collapsed} style={{ padding: '6px 10px', cursor: 'pointer' }}>
+                    {collapsed ? 'Expand' : 'Collapse'}
+                </button>
+            </div>
 
             {invites.length === 0 ? (
                 <p style={{ color: "#666" }}>No invitees yet.</p>
-            ) : (
+            ) : !collapsed ? (
                 <ul style={{ padding: 0, listStyle: "none" }}>
                     {invites.map((invite) => {
                         const userVotes = votesByUser[invite.invitee] || { AVAILABLE: 0, MAYBE: 0, NOT_AVAILABLE: 0 };
@@ -140,10 +131,6 @@ const InviteeManagement = ({ eventId, proposedDates, onInviteeChange }) => {
                             >
                                 <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                                     <strong>{invite.invitee_username}</strong>
-
-                                    <span style={{ ...getInviteStatusBadgeStyle(invite.status), ...badgeStyle }}>
-                                        {invite.status}
-                                    </span>
 
                                     {/* Vote summary badges */}
                                     <span style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
@@ -184,6 +171,8 @@ const InviteeManagement = ({ eventId, proposedDates, onInviteeChange }) => {
                         );
                     })}
                 </ul>
+            ) : (
+                <p style={{ color: '#666' }}>{invites.length} invitee(s) — collapsed.</p>
             )}
 
             {/* Add invitee input */}
