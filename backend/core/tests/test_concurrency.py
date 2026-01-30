@@ -2,16 +2,15 @@
 Tests for concurrency and transaction handling.
 """
 from datetime import datetime, timedelta
-from django.test import TransactionTestCase
 from django.contrib.auth.models import User
 from django.urls import reverse
-from rest_framework.test import APIClient
+from rest_framework.test import APIClient, APITestCase
 from rest_framework.authtoken.models import Token
 from rest_framework import status
 from core.models import Event, ProposedDate
 
 
-class ConcurrencyAndTransactionTests(TransactionTestCase):
+class ConcurrencyAndTransactionTests(APITestCase):
     """Test concurrent operations and transaction handling."""
     
     def setUp(self):

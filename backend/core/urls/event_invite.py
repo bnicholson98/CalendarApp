@@ -10,6 +10,7 @@ urlpatterns = [
     path('', event_invite.list_received_invites, name='list_received'),
     path('sent/', event_invite.list_sent_invites, name='list_sent'),
     path('create/', event_invite.create_invite, name='create'),
+    path('events/<int:event_id>/', event_invite.list_event_invites, name='list_event'),
     path('<int:invite_id>/', event_invite.get_invite, name='detail'),
     path('<int:invite_id>/update/', event_invite.update_invite_status, name='update'),
     path('<int:invite_id>/delete/', event_invite.delete_invite, name='delete'),

@@ -53,7 +53,11 @@ class EventInviteService:
         Returns:
             QuerySet of invites ordered by created_at descending.
         """
-        return EventInvite.objects.filter(invitee=user).order_by('-created_at')
+        return EventInvite.objects.filter(
+            invitee=user
+        ).exclude(
+            event__status=Event.Status.CANCELLED
+        ).select_related('invitee').order_by('-created_at')
     
     @staticmethod
     def get_user_sent_invites(user: User) -> QuerySet[EventInvite]:
@@ -66,7 +70,7 @@ class EventInviteService:
         Returns:
             QuerySet of invites ordered by created_at descending.
         """
-        return EventInvite.objects.filter(owner=user).order_by('-created_at')
+        return EventInvite.objects.filter(owner=user).select_related('invitee').order_by('-created_at')
     
     @staticmethod
     def get_invite_by_id(invite_id: int, user: User) -> Optional[EventInvite]:
@@ -120,6 +124,31 @@ class EventInviteService:
         invite.save()
         
         return invite
+    
+    @staticmethod
+    def get_event_invites(event_id: int, user: User) -> QuerySet[EventInvite]:
+        """
+        Get all invites for a specific event.
+        Only the event owner can view the full invitee list.
+        
+        Args:
+            event_id: ID of the event.
+            user: User requesting the invites (must be event owner).
+        
+        Returns:
+            QuerySet of invites ordered by created_at descending.
+            
+        Raises:
+            NotFoundError: If event not found or user is not the owner.
+        """
+        try:
+            Event.objects.get(id=event_id, user=user)
+        except Event.DoesNotExist:
+            raise NotFoundError("Event not found or you are not the owner")
+        
+        return EventInvite.objects.filter(
+            event_id=event_id
+        ).select_related('invitee').order_by('-created_at')
     
     @staticmethod
     def delete_invite(invite_id: int, user: User) -> Dict:

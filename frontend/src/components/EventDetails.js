@@ -10,6 +10,7 @@ import {
     cancelEvent,
 } from "../services/api";
 import DateVoting from "./DateVoting";
+import InviteeManagement from "./InviteeManagement";
 
 const EventDetails = () => {
     const { eventId } = useParams();
@@ -312,6 +313,15 @@ const EventDetails = () => {
                     eventId={event.id}
                     proposedDates={event.proposed_dates}
                     onVoteChange={loadEvent}
+                />
+            )}
+
+            {/* Invitee management — owner only */}
+            {isOwner() && (
+                <InviteeManagement
+                    eventId={event.id}
+                    proposedDates={event.proposed_dates}
+                    onInviteeChange={loadEvent}
                 />
             )}
 

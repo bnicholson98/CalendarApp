@@ -126,12 +126,12 @@ class EventInviteCreationTests(APITestCase):
         self.api_client = APIClient()
     
     def test_valid_invite_creation(self):
-        """Test successful invite creation by event owner."""
+        """Test successful invite creation by event owner using username."""
         self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.owner_token.key}')
         
         response = self.api_client.post(
             self.create_invite_url,
-            {'event': self.event.id, 'invitee': self.invitee.id},
+            {'event': self.event.id, 'username': 'invitee'},
             format='json'
         )
         
@@ -149,7 +149,7 @@ class EventInviteCreationTests(APITestCase):
         
         response = self.api_client.post(
             self.create_invite_url,
-            {'event': self.event.id, 'invitee': self.invitee.id},
+            {'event': self.event.id, 'username': 'invitee'},
             format='json'
         )
         
@@ -162,7 +162,7 @@ class EventInviteCreationTests(APITestCase):
         
         response = self.api_client.post(
             self.create_invite_url,
-            {'event': self.event.id, 'invitee': self.owner.id},
+            {'event': self.event.id, 'username': 'owner'},
             format='json'
         )
         
@@ -171,7 +171,6 @@ class EventInviteCreationTests(APITestCase):
     
     def test_duplicate_invite_fails(self):
         """Test that duplicate invites are rejected."""
-        # Create first invite
         EventInvite.objects.create(
             event=self.event,
             owner=self.owner,
@@ -182,18 +181,31 @@ class EventInviteCreationTests(APITestCase):
         
         response = self.api_client.post(
             self.create_invite_url,
-            {'event': self.event.id, 'invitee': self.invitee.id},
+            {'event': self.event.id, 'username': 'invitee'},
             format='json'
         )
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(EventInvite.objects.count(), 1)
     
+    def test_unknown_username_fails(self):
+        """Test that an unrecognised username is rejected."""
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.owner_token.key}')
+        
+        response = self.api_client.post(
+            self.create_invite_url,
+            {'event': self.event.id, 'username': 'ghost_user'},
+            format='json'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(EventInvite.objects.count(), 0)
+    
     def test_unauthorized_invite_creation(self):
         """Test invite creation without authentication fails."""
         response = self.api_client.post(
             self.create_invite_url,
-            {'event': self.event.id, 'invitee': self.invitee.id},
+            {'event': self.event.id, 'username': 'invitee'},
             format='json'
         )
         
@@ -204,7 +216,7 @@ class EventInviteCreationTests(APITestCase):
         """Test invite creation with missing fields fails."""
         self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.owner_token.key}')
         
-        # Missing invitee
+        # Missing username
         response = self.api_client.post(
             self.create_invite_url,
             {'event': self.event.id},
@@ -215,7 +227,7 @@ class EventInviteCreationTests(APITestCase):
         # Missing event
         response = self.api_client.post(
             self.create_invite_url,
-            {'invitee': self.invitee.id},
+            {'username': 'invitee'},
             format='json'
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -602,5 +614,112 @@ class EventInviteDeleteTests(APITestCase):
         url = reverse('event_invites:delete', args=[invite.id])
         
         response = self.api_client.delete(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class EventInviteEventListTests(APITestCase):
+    """Test the list-invites-for-an-event endpoint."""
+    
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username='owner',
+            password='testpass123'
+        )
+        self.invitee1 = User.objects.create_user(
+            username='invitee1',
+            password='testpass123'
+        )
+        self.invitee2 = User.objects.create_user(
+            username='invitee2',
+            password='testpass123'
+        )
+        self.other_user = User.objects.create_user(
+            username='other',
+            password='testpass123'
+        )
+        self.owner_token, _ = Token.objects.get_or_create(user=self.owner)
+        self.invitee1_token, _ = Token.objects.get_or_create(user=self.invitee1)
+        self.other_token, _ = Token.objects.get_or_create(user=self.other_user)
+        
+        self.event = Event.objects.create(
+            event_name='Test Event',
+            user=self.owner
+        )
+        ProposedDate.objects.create(
+            event=self.event,
+            date=datetime.now().date()
+        )
+        
+        self.invite1 = EventInvite.objects.create(
+            event=self.event,
+            owner=self.owner,
+            invitee=self.invitee1
+        )
+        self.invite2 = EventInvite.objects.create(
+            event=self.event,
+            owner=self.owner,
+            invitee=self.invitee2
+        )
+        
+        self.api_client = APIClient()
+    
+    def test_list_event_invites_as_owner(self):
+        """Test owner can list all invites for their event."""
+        url = reverse('event_invites:list_event', args=[self.event.id])
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.owner_token.key}')
+        
+        response = self.api_client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 2)
+        invitee_usernames = {item['invitee_username'] for item in response.data}
+        self.assertEqual(invitee_usernames, {'invitee1', 'invitee2'})
+    
+    def test_list_event_invites_as_non_owner_fails(self):
+        """Test that non-owner cannot list event invites."""
+        url = reverse('event_invites:list_event', args=[self.event.id])
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.other_token.key}')
+        
+        response = self.api_client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_list_event_invites_as_invitee_fails(self):
+        """Test that an invitee cannot list the full event invite list."""
+        url = reverse('event_invites:list_event', args=[self.event.id])
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.invitee1_token.key}')
+        
+        response = self.api_client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_list_event_invites_nonexistent_event(self):
+        """Test listing invites for a non-existent event."""
+        url = reverse('event_invites:list_event', args=[99999])
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.owner_token.key}')
+        
+        response = self.api_client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    
+    def test_list_event_invites_empty(self):
+        """Test listing invites when event has none."""
+        self.invite1.delete()
+        self.invite2.delete()
+        
+        url = reverse('event_invites:list_event', args=[self.event.id])
+        self.api_client.credentials(HTTP_AUTHORIZATION=f'Token {self.owner_token.key}')
+        
+        response = self.api_client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+    
+    def test_list_event_invites_unauthenticated(self):
+        """Test listing event invites without authentication."""
+        url = reverse('event_invites:list_event', args=[self.event.id])
+        
+        response = self.api_client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

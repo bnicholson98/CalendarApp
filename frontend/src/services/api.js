@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-    baseURL: 'http://127.0.0.1:8000/api', // Django backend URL
+    baseURL: process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api',
     headers: {
         'Content-Type': 'application/json',
     },
@@ -149,6 +149,53 @@ export const deleteVote = async (eventId, dateId) => {
     await api.delete(`/votes/events/${eventId}/dates/${dateId}/delete/`, {
         headers: getAuthHeaders(),
     });
+};
+
+/**
+ * Fetch all invites for a specific event (owner only).
+ * @param {number} eventId - The event ID
+ */
+export const fetchEventInvites = async (eventId) => {
+    const response = await api.get(`/invites/events/${eventId}/`, {
+        headers: getAuthHeaders(),
+    });
+    return response.data;
+};
+
+/**
+ * Create an invite for an event by username.
+ * @param {number} eventId - The event ID
+ * @param {string} username - Username of the user to invite
+ */
+export const createEventInvite = async (eventId, username) => {
+    const response = await api.post("/invites/create/", {
+        event: eventId,
+        username: username,
+    }, {
+        headers: getAuthHeaders(),
+    });
+    return response.data;
+};
+
+/**
+ * Delete an invite by ID.
+ * @param {number} inviteId - The invite ID
+ */
+export const deleteEventInvite = async (inviteId) => {
+    await api.delete(`/invites/${inviteId}/delete/`, {
+        headers: getAuthHeaders(),
+    });
+};
+
+/**
+ * Fetch all votes for an event (per-date breakdown with per-user detail).
+ * @param {number} eventId - The event ID
+ */
+export const fetchEventVotes = async (eventId) => {
+    const response = await api.get(`/votes/events/${eventId}/`, {
+        headers: getAuthHeaders(),
+    });
+    return response.data;
 };
 
 export default api;

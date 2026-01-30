@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import api, { fetchUserEvents, fetchReceivedInvites } from "../services/api";
+import api, { fetchUserEvents, fetchReceivedInvites, fetchMyVotes } from "../services/api";
 
 const Home = ({ onLogout }) => {
     const navigate = useNavigate();
@@ -31,12 +31,40 @@ const Home = ({ onLogout }) => {
                 );
                 setMyEvents(ownedEvents);
 
-                // Enrich invites with event details
-                const enrichedInvites = invites.map(invite => ({
+                // Enrich invites with event details, excluding cancelled events
+                const enrichedInvites = invites
+                    .map(invite => ({
+                        ...invite,
+                        eventDetails: eventsById[invite.event] || null,
+                    }))
+                    .filter(invite => !invite.eventDetails || invite.eventDetails.status !== "CANCELLED");
+
+                // Fetch the current user's vote counts for each invited event so the
+                // "Action Required" badge can be hidden once every proposed date has
+                // been voted on.
+                const uniqueEventIds = [...new Set(
+                    enrichedInvites
+                        .filter(invite => invite.eventDetails)
+                        .map(invite => invite.eventDetails.id)
+                )];
+
+                const voteResults = await Promise.all(
+                    uniqueEventIds.map(eventId => fetchMyVotes(eventId))
+                );
+
+                const voteCountByEvent = {};
+                uniqueEventIds.forEach((eventId, i) => {
+                    voteCountByEvent[eventId] = voteResults[i].length;
+                });
+
+                const invitesWithVotes = enrichedInvites.map(invite => ({
                     ...invite,
-                    eventDetails: eventsById[invite.event] || null,
+                    myVoteCount: invite.eventDetails
+                        ? (voteCountByEvent[invite.eventDetails.id] || 0)
+                        : 0,
                 }));
-                setInvitedEvents(enrichedInvites);
+
+                setInvitedEvents(invitesWithVotes);
             } catch (error) {
                 console.error("Error loading data:", error);
                 alert("An error occurred while loading your events. Please try again.");
@@ -164,7 +192,8 @@ const Home = ({ onLogout }) => {
                         {invitedEvents.map((invite) => (
                             <li
                                 key={invite.id}
-                                style={{ ...listItemStyle, ...getInviteStatusStyle(invite.status) }}
+                                style={{ ...listItemStyle, ...getInviteStatusStyle(invite.status), cursor: invite.eventDetails ? "pointer" : "default" }}
+                                onClick={() => invite.eventDetails && navigate(`/event-details/${invite.eventDetails.id}`)}
                             >
                                 <strong>
                                     {invite.eventDetails ? invite.eventDetails.event_name : `Event #${invite.event}`}
@@ -174,10 +203,13 @@ const Home = ({ onLogout }) => {
                                         ({invite.eventDetails.status})
                                     </span>
                                 )}
-                                <span style={{ marginLeft: "10px" }}>
-                                    - Your Response: {invite.status}
-                                    {invite.status === "PENDING" && " ⚠️ Action Required"}
-                                </span>
+                                {invite.status === "PENDING"
+                                    && (!invite.eventDetails || invite.myVoteCount < invite.eventDetails.proposed_dates.length)
+                                    && (
+                                        <span style={{ marginLeft: "10px" }}>
+                                            ⚠️ Action Required
+                                        </span>
+                                    )}
                             </li>
                         ))}
                     </ul>

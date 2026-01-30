@@ -13,48 +13,58 @@ class EventInviteSerializer(serializers.ModelSerializer):
     owner = serializers.PrimaryKeyRelatedField(read_only=True)
     event = serializers.PrimaryKeyRelatedField(read_only=True)
     invitee = serializers.PrimaryKeyRelatedField(read_only=True)
+    invitee_username = serializers.CharField(source='invitee.username', read_only=True)
     status = serializers.ChoiceField(choices=EventInvite.Status.choices, read_only=True)
     
     class Meta:
         model = EventInvite
-        fields = ['id', 'event', 'owner', 'invitee', 'status', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'event', 'owner', 'invitee', 'status', 'created_at', 'updated_at']
+        fields = ['id', 'event', 'owner', 'invitee', 'invitee_username', 'status', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'event', 'owner', 'invitee', 'invitee_username', 'status', 'created_at', 'updated_at']
 
 
 class EventInviteCreateSerializer(serializers.Serializer):
     """
-    Serializer for creating an event invite.
+    Serializer for creating an event invite by username.
     """
     event = serializers.PrimaryKeyRelatedField(queryset=Event.objects.all())
-    invitee = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+    username = serializers.CharField(required=True)
     
     def validate(self, data):
         """
-        Validate the invite data.
+        Validate the invite data: resolve username to a User, then check
+        ownership, self-invite, and duplicate constraints.
         """
         request = self.context.get('request')
         event = data.get('event')
-        invitee = data.get('invitee')
+        username = data.get('username', '').strip()
 
         # Only event owner can create invites
         if event and request and event.user != request.user:
             raise serializers.ValidationError(
                 {"event": "Only the event owner can create invites."}
             )
-        
-        # Owner cannot invite themselves
-        if invitee and request and invitee == request.user:
+
+        try:
+            invitee = User.objects.get(username=username)
+        except User.DoesNotExist:
             raise serializers.ValidationError(
-                {"invitee": "You cannot invite yourself."}
+                {"username": "No user found with that username."}
             )
-        
+
+        # Owner cannot invite themselves
+        if request and invitee == request.user:
+            raise serializers.ValidationError(
+                {"username": "You cannot invite yourself."}
+            )
+
         # Check for duplicate invite
-        if event and invitee:
+        if event:
             if EventInvite.objects.filter(event=event, invitee=invitee).exists():
                 raise serializers.ValidationError(
-                    {"invitee": "This user has already been invited to this event."}
+                    {"username": "This user has already been invited to this event."}
                 )
-        
+
+        data['invitee'] = invitee
         return data
 
 

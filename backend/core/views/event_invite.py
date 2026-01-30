@@ -83,6 +83,28 @@ def list_sent_invites(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+def list_event_invites(request, event_id):
+    """
+    List all invites for a specific event.
+    Only the event owner can view the full invitee list.
+    
+    Args:
+        request: HTTP request from an authenticated user.
+        event_id: ID of the event.
+    
+    Returns:
+        Response with serialized list of event invites or error.
+    """
+    try:
+        invites = EventInviteService.get_event_invites(event_id, request.user)
+        serializer = EventInviteSerializer(invites, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    except NotFoundError as e:
+        return Response({"error": e.message}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_invite(request, invite_id):
     """
     Retrieve a specific invite by ID.
