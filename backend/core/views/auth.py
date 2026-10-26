@@ -1,7 +1,7 @@
 """
 Authentication-related views for user registration, login, and logout.
 """
-from rest_framework.decorators import api_view, authentication_classes
+from rest_framework.decorators import api_view, authentication_classes, throttle_classes
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
@@ -9,9 +9,11 @@ from rest_framework.authentication import TokenAuthentication
 from core.serializers import UserRegistrationSerializer, LoginSerializer
 from core.services.auth_service import AuthService
 from core.exceptions import ValidationError, ExistingUserError
+from core.throttles import LoginRateThrottle, RegisterRateThrottle
 
 
 @api_view(["POST"])
+@throttle_classes([RegisterRateThrottle])
 def register_user(request):
     """
     Register a new user.
@@ -40,6 +42,7 @@ def register_user(request):
 
 
 @api_view(["POST"])
+@throttle_classes([LoginRateThrottle])
 def login_user(request):
     """
     Authenticate and login a user.

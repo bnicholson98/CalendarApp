@@ -27,7 +27,11 @@ const Login = ({ onLogin }) => {
       }
     } catch (error) {
       console.error("Login error:", error);
-      alert("Invalid credentials");
+      if (error.response?.status === 429) {
+        alert(`Too many login attempts. ${error.response.data.detail}`);
+      } else {
+        alert("Invalid credentials");
+      }
     }
   };
 

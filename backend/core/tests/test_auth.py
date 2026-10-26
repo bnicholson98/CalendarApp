@@ -8,6 +8,8 @@ from rest_framework.test import APIClient, APITestCase
 from rest_framework.authtoken.models import Token
 from rest_framework import status
 
+from core.throttles import LoginRateThrottle, RegisterRateThrottle
+
 
 class UserRegistrationTests(TestCase):
     """Test user registration functionality."""
@@ -157,3 +159,83 @@ class UserLogoutTests(APITestCase):
         self.api_client.credentials(HTTP_AUTHORIZATION=f'Token badtoken123')
         response = self.api_client.post(self.logout_url)
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class AuthRateLimitTests(TestCase):
+    """Test rate limiting on the unauthenticated auth endpoints."""
+
+    def setUp(self):
+        self.client = Client()
+        self.login_url = reverse('auth:login')
+        self.register_url = reverse('auth:register')
+        User.objects.create_user(username='testuser', password='testpass123')
+
+    def test_login_throttled_after_limit(self):
+        """Test login returns 429 once the per-IP limit is used up."""
+        limit = LoginRateThrottle().num_requests
+        payload = {'username': 'testuser', 'password': 'wrongpass'}
+
+        for _ in range(limit):
+            response = self.client.post(self.login_url, payload, content_type='application/json')
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        response = self.client.post(self.login_url, payload, content_type='application/json')
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertIn('Retry-After', response)
+
+    def test_throttled_login_rejects_valid_credentials(self):
+        """Test a throttled client cannot log in even with the right password."""
+        limit = LoginRateThrottle().num_requests
+
+        for _ in range(limit):
+            self.client.post(
+                self.login_url,
+                {'username': 'testuser', 'password': 'wrongpass'},
+                content_type='application/json'
+            )
+
+        response = self.client.post(
+            self.login_url,
+            {'username': 'testuser', 'password': 'testpass123'},
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertNotIn('token', response.json())
+
+    def test_register_throttled_after_limit(self):
+        """Test registration returns 429 once the per-IP limit is used up."""
+        limit = RegisterRateThrottle().num_requests
+
+        for i in range(limit):
+            response = self.client.post(
+                self.register_url,
+                {'username': f'newuser{i}', 'password': 'testpass123'},
+                content_type='application/json'
+            )
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        response = self.client.post(
+            self.register_url,
+            {'username': 'onetoomany', 'password': 'testpass123'},
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertFalse(User.objects.filter(username='onetoomany').exists())
+
+    def test_login_and_register_limits_are_separate(self):
+        """Test using up the login limit does not block registration."""
+        limit = LoginRateThrottle().num_requests
+
+        for _ in range(limit + 1):
+            self.client.post(
+                self.login_url,
+                {'username': 'testuser', 'password': 'wrongpass'},
+                content_type='application/json'
+            )
+
+        response = self.client.post(
+            self.register_url,
+            {'username': 'newuser', 'password': 'testpass123'},
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)

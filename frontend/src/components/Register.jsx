@@ -34,6 +34,11 @@ const Register = ({ onRegister }) => {
       }
     } catch (error) {
       console.error("Registration error:", error);
+      if (error.response?.status === 429) {
+        alert(`Too many registration attempts. ${error.response.data.detail}`);
+      } else {
+        alert(error.response?.data?.error || "Registration failed. Please try again.");
+      }
     }
   };
 
