@@ -20,8 +20,10 @@ A calendar application for managing events, invites, and voting on event proposa
 
 ### Backend
 1. Navigate to `backend/`
-2. Run migrations: `python manage.py migrate`
-3. Start server: `python manage.py runserver`
+2. Create and activate a virtual environment: `python -m venv venv`, then `venv\Scripts\activate` (Windows) or `source venv/bin/activate` (macOS/Linux)
+3. Install dependencies: `pip install -r requirements.txt` (or `requirements-dev.txt` to include the test tools)
+4. Run migrations: `python manage.py migrate`
+5. Start server: `python manage.py runserver`
 
 ### Frontend
 1. Navigate to `frontend/`

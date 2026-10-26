@@ -16,6 +16,23 @@ const getAuthHeaders = () => {
 };
 
 /**
+ * A 401 on an authenticated request means the stored token is no longer valid
+ * Clear the session and send the user back to login.
+ */
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response?.status === 401 && error.config?.headers?.Authorization) {
+            localStorage.removeItem("token");
+            localStorage.removeItem("userId");
+            localStorage.removeItem("userName");
+            window.location.assign("/login");
+        }
+        return Promise.reject(error);
+    }
+);
+
+/**
  * Fetch all events for the authenticated user (owned or invited to).
  */
 export const fetchUserEvents = async () => {

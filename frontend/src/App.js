@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import Login from './components/Login';
 import Register from './components/Register';
@@ -7,13 +7,10 @@ import CreateEvent from "./components/CreateEvent";
 import EventDetails from "./components/EventDetails";
 
 function App() {
-	const [authenticated, setAuthenticated] = useState(false);
-
-	useEffect(() => {
-		if (localStorage.getItem('token')) {
-		setAuthenticated(true);  // Check if token exists
-		}
-	}, []);
+	// Read the token synchronously so the first render already knows the auth
+	// state; otherwise protected routes redirect to /login before it's checked.
+	// An invalid token is caught by the 401 interceptor in services/api.js.
+	const [authenticated, setAuthenticated] = useState(() => !!localStorage.getItem('token'));
 
 	const handleRegister = () => setAuthenticated(true);
 	const handleLogin = () => setAuthenticated(true);
