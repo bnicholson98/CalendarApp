@@ -12,20 +12,29 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 
 from pathlib import Path
 
+import environ
+from django.core.exceptions import ImproperlyConfigured
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Settings are read from environment variables, optionally loaded from
+# backend/.env (see .env.example). Real environment variables take precedence.
+env = environ.Env()
+environ.Env.read_env(BASE_DIR / '.env')
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-p#u%(tzh5(lm=$b2l9@1ldbnb!xgjk^m5c0xh$-qug*6w(sohl'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env.bool('DEBUG', default=False)
 
-ALLOWED_HOSTS = []
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = env('SECRET_KEY', default=None)
+if not SECRET_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured('SECRET_KEY must be set when DEBUG is off.')
+    SECRET_KEY = 'django-insecure-local-development-only'
+
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[])
 
 
 # Application definition
@@ -79,18 +88,34 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'mssql',
-        'NAME': 'CalendarAppDB',
-        'HOST': 'localhost',
-        'PORT': '1433',
-        'OPTIONS': {
-            'driver': 'ODBC Driver 17 for SQL Server',
-            'trusted_connection': 'yes',
-        },
+# SQL Server is the main database. DB_ENGINE=sqlite uses a local file instead,
+# for backend development without a database server running.
+DB_ENGINE = env('DB_ENGINE', default='mssql')
+
+if DB_ENGINE == 'mssql':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'mssql',
+            'NAME': env('DB_NAME', default='CalendarAppDB'),
+            'HOST': env('DB_HOST', default='localhost'),
+            'PORT': env('DB_PORT', default='1433'),
+            # Leave DB_USER empty to use Windows authentication (trusted connection).
+            'USER': env('DB_USER', default=''),
+            'PASSWORD': env('DB_PASSWORD', default=''),
+            'OPTIONS': {
+                'driver': env('DB_DRIVER', default='ODBC Driver 17 for SQL Server'),
+            },
+        }
     }
-}
+elif DB_ENGINE == 'sqlite':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+else:
+    raise ImproperlyConfigured(f"DB_ENGINE must be 'mssql' or 'sqlite', not {DB_ENGINE!r}.")
 
 
 # Password validation
@@ -134,7 +159,9 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOW_ALL_ORIGINS = True
+# Any origin may call the API in development; otherwise only those listed.
+CORS_ALLOW_ALL_ORIGINS = DEBUG
+CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[])
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (

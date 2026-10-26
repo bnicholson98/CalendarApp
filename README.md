@@ -14,7 +14,7 @@ A calendar application for managing events, invites, and voting on event proposa
 
 - **Backend**: Django, Django REST Framework
 - **Frontend**: React
-- **Database**: SQLite (default)
+- **Database**: SQL Server (SQLite supported for local development)
 
 ## Setup
 
