@@ -7,7 +7,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient, APITestCase
 from rest_framework.authtoken.models import Token
 from rest_framework import status
-from core.models import Event, ProposedDate
+from core.models import Event
 
 
 class ConcurrencyAndTransactionTests(APITestCase):

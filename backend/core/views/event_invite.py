@@ -12,7 +12,7 @@ from core.serializers import (
     InviteStatusUpdateSerializer,
 )
 from core.services.event_invite_service import EventInviteService
-from core.exceptions import NotFoundError, ValidationError, PermissionDeniedError
+from core.exceptions import NotFoundError, PermissionDeniedError
 
 
 @api_view(['POST'])

@@ -1,7 +1,7 @@
 """
 Tests for event invite-related functionality.
 """
-from datetime import datetime, timedelta
+from datetime import datetime
 from django.test import TestCase
 from django.urls import reverse
 from django.contrib.auth.models import User

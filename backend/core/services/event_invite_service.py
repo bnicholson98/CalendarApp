@@ -1,7 +1,7 @@
 """
 Service layer for event invite-related business logic.
 """
-from typing import List, Optional, Dict
+from typing import Optional, Dict
 from django.contrib.auth.models import User
 from django.db.models import QuerySet
 
@@ -29,7 +29,7 @@ class EventInviteService:
             NotFoundError: If event not found.
         """
         try:
-            event = Event.objects.get(id=event_id)
+            Event.objects.get(id=event_id)
         except Event.DoesNotExist:
             raise NotFoundError("Event not found")
         

@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework.test import APIClient, APITestCase
 from rest_framework import status
-from core.models import Event, EventInvite, ProposedDate
+from core.models import Event
 
 
 class UserJourneyIntegrationTests(APITestCase):
